@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+APIS.md
+MEMORIA_SESION.md
+PROCESO.md
+PROCESO_TECNICO.md
+STACK_Y_COSTOS.md
+contacto.md
