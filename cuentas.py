@@ -5,6 +5,20 @@ existente, y creación de cuentas nuevas. Ver structuraCuentas.md para el
 esquema del board y docs/superpowers/specs/2026-09-09-tablero-cuentas-design.md
 para las reglas de negocio.
 """
+import json
+from datetime import date
+
+import streamlit as st
+
+from config import (
+    ESTADOS_CONTACTO_EXITOSO,
+    MONDAY_BOARD_CONTACTO,
+    MONDAY_BOARD_CUENTAS,
+    MONDAY_COLUMNAS_CONTACTO,
+    MONDAY_COLUMNAS_CUENTAS,
+)
+from monday import monday_graphql
+from utils import _telefono_mx, _valor_valido
 
 
 def clasificar_cuentas(df_empresas, cuentas_reales):
@@ -35,3 +49,202 @@ def clasificar_cuentas(df_empresas, cuentas_reales):
     df_existe_necesita_contacto = df_existe[~df_existe["_gestionada"]].drop(columns="_gestionada")
     df_existe_gestionada = df_existe[df_existe["_gestionada"]].drop(columns="_gestionada")
     return df_nueva, df_existe_necesita_contacto, df_existe_gestionada
+
+
+def perfil_desde_cuenta(cuenta_monday):
+    """Arma un dict con el mismo esquema que EnriquecimientoEmpresa.model_dump()
+    (ver enrichment.py) a partir de los datos ya cargados en Cuentas, para
+    una empresa que ya existe en Monday y no necesita re-enriquecerse.
+    Mismas claves que la salida real de enriquecer_empresa() para poder
+    pasar por el mismo pipeline de armado de df_enriquecido."""
+    tamano = cuenta_monday.get("tamano")
+    cantidad_empleados = cuenta_monday.get("cantidad_empleados")
+    if cantidad_empleados and tamano:
+        empleados_texto = f"{cantidad_empleados} ({tamano}, dato de Monday)"
+    elif cantidad_empleados:
+        empleados_texto = f"{cantidad_empleados} (dato de Monday)"
+    elif tamano:
+        empleados_texto = f"{tamano} (dato de Monday)"
+    else:
+        empleados_texto = None
+    return {
+        "linkedin_url": None,
+        "sitio_web": cuenta_monday.get("pagina_web"),
+        "empleados_linkedin": empleados_texto,
+        "actividad_reciente": False,
+        "resumen_actividad": None,
+        "senales_riesgo": False,
+        "resumen_riesgo": None,
+        "contacto_rrhh": None,
+        "contacto_rrhh_url": None,
+        "confianza_coincidencia": "alta",
+        "evidencia": (
+            "Perfil tomado del board de Cuentas en Monday (cuenta ya existente) "
+            "— no se re-enriqueció con búsqueda web."
+        ),
+    }
+
+
+def _linked_item_ids(column_value):
+    """item_ids (str) vinculados en una columna board_relation real — [] si no
+    hay vínculos. Los ids llegan directo en 'linked_item_ids' vía el fragmento
+    tipado BoardRelationValue; no hace falta parsear 'value' como JSON
+    (confirmado empíricamente — 'value'/'text' son siempre null en estas
+    columnas reales, a diferencia de lo que asumía la primera versión de este
+    código, que intentaba leer 'linkedPulseIds' de un json.loads(value))."""
+    if not column_value:
+        return []
+    return list(column_value.get("linked_item_ids") or [])
+
+
+def _estados_contacto_por_cuenta():
+    """{cuenta_item_id (str): set(labels de 'Estado')} de todos los
+    contactos del board de Contacto que ya tienen una cuenta vinculada —
+    bulk, mismo patrón de paginación que monday_listar_cuentas() en
+    monday.py."""
+    columna_cuenta = MONDAY_COLUMNAS_CONTACTO["Cuenta asociada"]
+    columna_estado = MONDAY_COLUMNAS_CONTACTO["Estado"]
+    estados_por_cuenta = {}
+
+    def _sumar(items):
+        for item in items:
+            valores = {cv["id"]: cv for cv in item["column_values"]}
+            for cuenta_id in _linked_item_ids(valores[columna_cuenta]):
+                estados_por_cuenta.setdefault(cuenta_id, set())
+                etiqueta = valores[columna_estado]["text"]
+                if etiqueta:
+                    estados_por_cuenta[cuenta_id].add(etiqueta)
+
+    query_inicial = """
+    query ($boardId: ID!, $columnaIds: [String!]) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 100) {
+          cursor
+          items { column_values(ids: $columnaIds) { id text value ... on BoardRelationValue { linked_item_ids } } }
+        }
+      }
+    }
+    """
+    data = monday_graphql(
+        query_inicial, {"boardId": MONDAY_BOARD_CONTACTO, "columnaIds": [columna_cuenta, columna_estado]}
+    )
+    pagina = data["boards"][0]["items_page"]
+    cursor = pagina["cursor"]
+    _sumar(pagina["items"])
+
+    query_siguiente = """
+    query ($cursor: String!, $columnaIds: [String!]) {
+      next_items_page(cursor: $cursor, limit: 100) {
+        cursor
+        items { column_values(ids: $columnaIds) { id text value ... on BoardRelationValue { linked_item_ids } } }
+      }
+    }
+    """
+    while cursor:
+        data = monday_graphql(query_siguiente, {"cursor": cursor, "columnaIds": [columna_cuenta, columna_estado]})
+        pagina = data["next_items_page"]
+        cursor = pagina["cursor"]
+        _sumar(pagina["items"])
+
+    return estados_por_cuenta
+
+
+@st.cache_data(show_spinner="Consultando cuentas ya cargadas en Monday...")
+def monday_listar_cuentas_reales():
+    """{nombre_normalizado: {item_id, tiene_convenio, tiene_contacto_exitoso,
+    pagina_web, cantidad_empleados, tamano}} de TODOS los items del board de
+    Cuentas real. Cacheada sin TTL, refresco manual (mismo patrón que
+    monday_listar_cuentas() en monday.py)."""
+    columnas_a_leer = ["Convenios", "Página web", "Cantidad de empleados", "Tamaño"]
+    ids_columnas = [MONDAY_COLUMNAS_CUENTAS[c] for c in columnas_a_leer]
+    cuentas = {}
+
+    def _sumar(items):
+        for item in items:
+            valores = {cv["id"]: cv for cv in item["column_values"]}
+            nombre_normalizado = item["name"].strip().lower()
+            cuentas[nombre_normalizado] = {
+                "item_id": item["id"],
+                "tiene_convenio": len(_linked_item_ids(valores[MONDAY_COLUMNAS_CUENTAS["Convenios"]])) > 0,
+                "pagina_web": valores[MONDAY_COLUMNAS_CUENTAS["Página web"]]["text"] or None,
+                "cantidad_empleados": valores[MONDAY_COLUMNAS_CUENTAS["Cantidad de empleados"]]["text"] or None,
+                "tamano": valores[MONDAY_COLUMNAS_CUENTAS["Tamaño"]]["text"] or None,
+            }
+
+    query_inicial = """
+    query ($boardId: ID!, $columnaIds: [String!]) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 100) {
+          cursor
+          items { id name column_values(ids: $columnaIds) { id text value ... on BoardRelationValue { linked_item_ids } } }
+        }
+      }
+    }
+    """
+    data = monday_graphql(query_inicial, {"boardId": MONDAY_BOARD_CUENTAS, "columnaIds": ids_columnas})
+    pagina = data["boards"][0]["items_page"]
+    cursor = pagina["cursor"]
+    _sumar(pagina["items"])
+
+    query_siguiente = """
+    query ($cursor: String!, $columnaIds: [String!]) {
+      next_items_page(cursor: $cursor, limit: 100) {
+        cursor
+        items { id name column_values(ids: $columnaIds) { id text value ... on BoardRelationValue { linked_item_ids } } }
+      }
+    }
+    """
+    while cursor:
+        data = monday_graphql(query_siguiente, {"cursor": cursor, "columnaIds": ids_columnas})
+        pagina = data["next_items_page"]
+        cursor = pagina["cursor"]
+        _sumar(pagina["items"])
+
+    estados = _estados_contacto_por_cuenta()
+    for cuenta in cuentas.values():
+        cuenta["tiene_contacto_exitoso"] = bool(estados.get(cuenta["item_id"], set()) & ESTADOS_CONTACTO_EXITOSO)
+
+    return cuentas
+
+
+def monday_crear_cuenta(fila):
+    """Crea un item nuevo en el board de Cuentas real a partir de una fila
+    de df_contactos (esquema de fila_contacto en utils.py — usa las claves
+    '... empresa' agregadas ahí). Se llama solo al confirmar el export de
+    un pre-lead de cuenta nueva (nunca automático). Devuelve el item_id
+    real creado."""
+    columnas = MONDAY_COLUMNAS_CUENTAS
+    valores = {}
+    if _valor_valido(fila.get("Sector empresa")):
+        valores[columnas["Sector"]] = {"label": fila["Sector empresa"]}
+    if _valor_valido(fila.get("Personal estimado empresa")):
+        valores[columnas["Cantidad de empleados"]] = str(fila["Personal estimado empresa"])
+    if _valor_valido(fila.get("Tamaño empresa")):
+        valores[columnas["Tamaño"]] = {"label": fila["Tamaño empresa"]}
+    if _valor_valido(fila.get("Correo empresa")):
+        correo = fila["Correo empresa"]
+        valores[columnas["E-Mail"]] = {"email": correo, "text": correo}
+    telefono = _telefono_mx(fila.get("Teléfono (empresa)"))
+    if telefono:
+        valores[columnas["Teléfono"]] = {"phone": telefono, "countryShortName": "MX"}
+    if _valor_valido(fila.get("Sitio web empresa")):
+        sitio = fila["Sitio web empresa"]
+        valores[columnas["Página web"]] = {"url": sitio, "text": sitio}
+    valores[columnas["País"]] = "México"
+    valores[columnas["Fecha de inicio"]] = {"date": date.today().isoformat()}
+
+    mutation = """
+    mutation ($boardId: ID!, $itemName: String!, $columnValues: JSON!) {
+      create_item(
+        board_id: $boardId, item_name: $itemName, column_values: $columnValues,
+        create_labels_if_missing: true
+      ) { id }
+    }
+    """
+    nombre_item = str(fila.get("Cuenta asociada") or "Cuenta sin nombre")
+    data = monday_graphql(mutation, {
+        "boardId": MONDAY_BOARD_CUENTAS,
+        "itemName": nombre_item,
+        "columnValues": json.dumps(valores),
+    })
+    return data["create_item"]["id"]

@@ -1,6 +1,6 @@
 import pandas as pd
 
-from cuentas import clasificar_cuentas
+from cuentas import clasificar_cuentas, perfil_desde_cuenta
 
 
 def _df_empresas(nombres):
@@ -58,3 +58,25 @@ def test_match_normaliza_espacios_y_mayusculas():
         _df_empresas(["  EMPRESA MAYUS SA  "]), cuentas_reales
     )
     assert len(df_gestionada) == 1
+
+
+def test_perfil_desde_cuenta_usa_pagina_web_y_tamano():
+    cuenta_monday = {
+        "item_id": "111", "pagina_web": "https://empresa.com",
+        "cantidad_empleados": "300", "tamano": "Grande",
+    }
+    perfil = perfil_desde_cuenta(cuenta_monday)
+    assert perfil["sitio_web"] == "https://empresa.com"
+    assert "300" in perfil["empleados_linkedin"]
+    assert "Grande" in perfil["empleados_linkedin"]
+    assert perfil["linkedin_url"] is None
+    assert perfil["actividad_reciente"] is False
+    assert perfil["senales_riesgo"] is False
+    assert perfil["confianza_coincidencia"] == "alta"
+    assert "Monday" in perfil["evidencia"]
+
+
+def test_perfil_desde_cuenta_sin_datos_no_rompe():
+    perfil = perfil_desde_cuenta({"item_id": "222"})
+    assert perfil["sitio_web"] is None
+    assert perfil["empleados_linkedin"] is None
