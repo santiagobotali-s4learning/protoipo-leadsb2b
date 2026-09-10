@@ -213,25 +213,28 @@ def monday_crear_cuenta(fila):
     '... empresa' agregadas ahí). Se llama solo al confirmar el export de
     un pre-lead de cuenta nueva (nunca automático). Devuelve el item_id
     real creado."""
+    # Todas las columnas de MONDAY_COLUMNAS_CUENTAS son type "text" simple
+    # (confirmado empíricamente en el Task 1 — ver task-1-report.md): a
+    # diferencia de columnas típicas de Monday con tipos dedicados
+    # (status/email/phone/link/date), acá se escribe siempre un string
+    # plano, nunca el dict tipado que usa la API para esas otras columnas.
     columnas = MONDAY_COLUMNAS_CUENTAS
     valores = {}
     if _valor_valido(fila.get("Sector empresa")):
-        valores[columnas["Sector"]] = {"label": fila["Sector empresa"]}
+        valores[columnas["Sector"]] = str(fila["Sector empresa"])
     if _valor_valido(fila.get("Personal estimado empresa")):
         valores[columnas["Cantidad de empleados"]] = str(fila["Personal estimado empresa"])
     if _valor_valido(fila.get("Tamaño empresa")):
-        valores[columnas["Tamaño"]] = {"label": fila["Tamaño empresa"]}
+        valores[columnas["Tamaño"]] = str(fila["Tamaño empresa"])
     if _valor_valido(fila.get("Correo empresa")):
-        correo = fila["Correo empresa"]
-        valores[columnas["E-Mail"]] = {"email": correo, "text": correo}
+        valores[columnas["E-Mail"]] = str(fila["Correo empresa"])
     telefono = _telefono_mx(fila.get("Teléfono (empresa)"))
     if telefono:
-        valores[columnas["Teléfono"]] = {"phone": telefono, "countryShortName": "MX"}
+        valores[columnas["Teléfono"]] = telefono
     if _valor_valido(fila.get("Sitio web empresa")):
-        sitio = fila["Sitio web empresa"]
-        valores[columnas["Página web"]] = {"url": sitio, "text": sitio}
+        valores[columnas["Página web"]] = str(fila["Sitio web empresa"])
     valores[columnas["País"]] = "México"
-    valores[columnas["Fecha de inicio"]] = {"date": date.today().isoformat()}
+    valores[columnas["Fecha de inicio"]] = date.today().isoformat()
 
     mutation = """
     mutation ($boardId: ID!, $itemName: String!, $columnValues: JSON!) {
