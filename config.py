@@ -199,7 +199,8 @@ COLUMNAS_CONTACTO_MONDAY = [
 # salió, si es el principal de la empresa o una alternativa).
 COLUMNAS_CONTACTO_INTERNAS = [
     "Es principal", "Estado del correo", "Score del correo", "Confianza del correo",
-    "Fuente", "Fuentes del correo",
+    "Fuente", "Fuentes del correo", "Cuenta item id", "Sector empresa",
+    "Personal estimado empresa", "Tamaño empresa", "Sitio web empresa", "Correo empresa",
 ]
 # Marcado manual en el panel de gestión — no se envía a Monday tal cual, pilotea
 # si/cómo se exporta cada fila.

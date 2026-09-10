@@ -82,9 +82,14 @@ def _texto(valor, default="—"):
 def fila_contacto(
     razon_social, nombre, correo, telefono_empresa, cargo, linkedin, es_principal,
     estado_correo=None, score_correo=None, confianza_correo=None, fuente=None, sources=None,
+    cuenta_item_id=None, sector_empresa=None, personal_estimado_empresa=None,
+    tamano_empresa=None, sitio_web_empresa=None, correo_empresa=None,
 ):
     """Arma una fila de contacto con el esquema del board de Monday (ver
-    contacto.md) + columnas propias de diagnóstico al final."""
+    contacto.md) + columnas propias de diagnóstico al final. Las columnas
+    'Cuenta item id'/'... empresa' no se mandan al board de Contacto —
+    viajan para poder crear la cuenta en Monday (monday_crear_cuenta) si
+    hace falta al momento de exportar (ver cuentas.py)."""
     return {
         "Cuenta asociada": razon_social,
         "Nombre": nombre,
@@ -105,6 +110,12 @@ def fila_contacto(
         "Confianza del correo": confianza_correo,
         "Fuente": fuente,
         "Fuentes del correo": sources,
+        "Cuenta item id": cuenta_item_id,
+        "Sector empresa": sector_empresa,
+        "Personal estimado empresa": personal_estimado_empresa,
+        "Tamaño empresa": tamano_empresa,
+        "Sitio web empresa": sitio_web_empresa,
+        "Correo empresa": correo_empresa,
     }
 
 
