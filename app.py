@@ -22,12 +22,14 @@ from config import (
     ESTRATO_TODOS,
     HUNTER_API_KEY,
     MONDAY_API_KEY,
+    MONDAY_BOARD_CUENTAS,
     N_EMPRESAS_ENRIQUECER,
     ROLES_CONTACTO,
     SERPAPI_KEY,
     TAMANO_PAGINA,
     TODOS_LOS_ROLES,
 )
+from cuentas import clasificar_cuentas, monday_crear_cuenta, monday_listar_cuentas_reales
 from denue import agrupar_por_empresa, buscar_denue, marcar_grupo_corporativo
 from enrichment import _dedup_contactos, buscar_contacto_por_rol, enriquecer_empresa, roles_a_buscar
 from hunter import (
@@ -37,7 +39,7 @@ from hunter import (
     hunter_enriquecimiento_combinado,
     hunter_verificar_email,
 )
-from monday import monday_correo_existe, monday_crear_contacto, monday_listar_cuentas, monday_listar_usuarios
+from monday import monday_correo_existe, monday_crear_contacto, monday_listar_usuarios
 from utils import (
     _gmail_compose_url,
     _texto,
@@ -340,31 +342,41 @@ with tab_limpios:
                     hide_index=True,
                 )
 
+    cuentas_reales = {}
     with st.container(border=True):
-        st.markdown("**Etapa 3 — Descarte de duplicados contra Monday**")
-        if not MONDAY_API_KEY:
-            st.warning("Falta MONDAY_API_KEY en el .env para comparar contra Monday.")
-            df_etapa4 = df_etapa3
+        st.markdown("**Etapa 3 — Clasificación contra el board de Cuentas**")
+        if not MONDAY_API_KEY or not MONDAY_BOARD_CUENTAS:
+            st.warning("Falta MONDAY_API_KEY y/o MONDAY_BOARD_CUENTAS en el .env para comparar contra Monday.")
+            df_etapa4 = df_etapa3.copy()
+            df_etapa4["Cuenta_item_id"] = None
         else:
-            if st.button("Actualizar cartera de Monday", icon=":material/refresh:"):
-                monday_listar_cuentas.clear()
+            if st.button("Actualizar cuentas de Monday", icon=":material/refresh:"):
+                monday_listar_cuentas_reales.clear()
             try:
-                cuentas_monday = monday_listar_cuentas()
-                st.caption(f"{len(cuentas_monday)} empresa(s) ya cargadas en Monday (board de Contacto).")
-                coincide_monday = (
-                    df_etapa3["Razon_social"].astype(str).str.strip().str.lower().isin(cuentas_monday)
+                cuentas_reales = monday_listar_cuentas_reales()
+                st.caption(f"{len(cuentas_reales)} cuenta(s) ya cargadas en Monday (board de Cuentas).")
+                df_nueva, df_existe_necesita_contacto, df_existe_gestionada = clasificar_cuentas(
+                    df_etapa3, cuentas_reales
                 )
-                df_etapa4 = df_etapa3[~coincide_monday]
-                descartadas_monday = df_etapa3[coincide_monday]
-                if not descartadas_monday.empty:
-                    with st.expander(f"Ver {len(descartadas_monday)} empresa(s) descartadas por Monday"):
+                df_etapa4 = pd.concat([df_nueva, df_existe_necesita_contacto])
+                if not df_existe_gestionada.empty:
+                    with st.expander(
+                        f"Ver {len(df_existe_gestionada)} empresa(s) descartadas — ya tienen convenio o "
+                        "contacto exitoso en Monday"
+                    ):
                         st.dataframe(
-                            descartadas_monday[["Razon_social", "Sucursales", "Personal_estimado", "Banda_total"]],
+                            df_existe_gestionada[["Razon_social", "Sucursales", "Personal_estimado", "Banda_total"]],
                             hide_index=True,
                         )
+                if not df_existe_necesita_contacto.empty:
+                    st.caption(
+                        f"{len(df_existe_necesita_contacto)} empresa(s) ya existen en Monday pero sin "
+                        "convenio ni contacto exitoso — se les busca contacto sin re-enriquecer perfil."
+                    )
             except Exception as exc:
                 st.error(f"No se pudo consultar Monday: {exc}")
-                df_etapa4 = df_etapa3
+                df_etapa4 = df_etapa3.copy()
+                df_etapa4["Cuenta_item_id"] = None
 
     df_final_cols = [c for c in COLUMNAS_LIMPIAS if c in df_etapa4.columns]
     df_final = df_etapa4[df_final_cols].rename(columns=COLUMNAS_LIMPIAS)
