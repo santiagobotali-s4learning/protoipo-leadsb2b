@@ -29,7 +29,12 @@ from config import (
     TAMANO_PAGINA,
     TODOS_LOS_ROLES,
 )
-from cuentas import clasificar_cuentas, monday_crear_cuenta, monday_listar_cuentas_reales
+from cuentas import (
+    clasificar_cuentas,
+    monday_crear_cuenta,
+    monday_listar_cuentas_reales,
+    perfil_desde_cuenta,
+)
 from denue import agrupar_por_empresa, buscar_denue, marcar_grupo_corporativo
 from enrichment import _dedup_contactos, buscar_contacto_por_rol, enriquecer_empresa, roles_a_buscar
 from hunter import (
@@ -415,14 +420,20 @@ with tab_limpios:
             )
 
 with tab_enriquecimiento:
+    df_nueva_etapa4 = df_etapa4[df_etapa4["Cuenta_item_id"].isna()]
+    df_existe_etapa4 = df_etapa4[df_etapa4["Cuenta_item_id"].notna()]
+    candidatas_nuevas = df_nueva_etapa4.head(N_EMPRESAS_ENRIQUECER)
+
     _texto_cantidad = (
-        "solo la empresa con más personal estimado"
+        "solo la empresa nueva con más personal estimado"
         if N_EMPRESAS_ENRIQUECER == 1
-        else f"solo las primeras {N_EMPRESAS_ENRIQUECER} empresas de más personal estimado"
+        else f"solo las primeras {N_EMPRESAS_ENRIQUECER} empresas nuevas de más personal estimado"
     )
     st.caption(
         f"Prototipo: busca y analiza {_texto_cantidad} de \"Datos limpios\", para no "
-        "consumir de más las búsquedas de SerpAPI/Anthropic."
+        "consumir de más las búsquedas de SerpAPI/Anthropic. Las empresas que ya existen "
+        "en Monday (sin convenio ni contacto exitoso) no se re-enriquecen — usan el perfil "
+        "que ya está cargado en el board de Cuentas."
     )
     st.caption(
         "**Personal estimado (DENUE)** vs. **Empleados (LinkedIn/web)** miden cosas distintas: "
@@ -437,20 +448,23 @@ with tab_enriquecimiento:
     elif df_etapa4.empty:
         st.info("No hay empresas en 'Datos limpios' para enriquecer todavía.")
     else:
-        candidatas = df_etapa4.head(N_EMPRESAS_ENRIQUECER)
-
         st.caption(
-            "Campos que se van a completar con la búsqueda: "
+            "Campos que se van a completar con la búsqueda (empresas nuevas): "
             + ", ".join(COLUMNAS_ENRIQUECIMIENTO.values()) + "."
         )
         st.markdown("**Datos actuales antes de enriquecer**")
         st.dataframe(df_final.head(N_EMPRESAS_ENRIQUECER), hide_index=True)
+        if not df_existe_etapa4.empty:
+            st.caption(
+                f"{len(df_existe_etapa4)} empresa(s) ya existen en Monday — se procesan igual, "
+                "sin re-enriquecer perfil."
+            )
 
         if st.button("Enriquecer estas empresas", icon=":material/travel_explore:"):
-            resultados = []
+            resultados_nuevas = []
             with st.status("Enriqueciendo empresas...", expanded=True) as status:
-                for i, fila in enumerate(candidatas.itertuples(), start=1):
-                    status.update(label=f"Empresa {i} de {len(candidatas)} — {fila.Razon_social}...")
+                for i, fila in enumerate(candidatas_nuevas.itertuples(), start=1):
+                    status.update(label=f"Empresa {i} de {len(candidatas_nuevas)} — {fila.Razon_social}...")
                     try:
                         resultado = enriquecer_empresa(
                             fila.Razon_social,
@@ -459,23 +473,44 @@ with tab_enriquecimiento:
                             SERPAPI_KEY,
                             ANTHROPIC_API_KEY,
                         )
-                        resultados.append(resultado.model_dump())
+                        resultados_nuevas.append(resultado.model_dump())
                         st.write(f"✓ {fila.Razon_social} — coincidencia {resultado.confianza_coincidencia}")
                     except Exception as exc:
-                        resultados.append(None)
+                        resultados_nuevas.append(None)
                         st.write(f"✗ {fila.Razon_social} — error: {exc}")
+
+                resultados_existe = []
+                for fila in df_existe_etapa4.itertuples():
+                    cuenta_monday = cuentas_reales.get(str(fila.Razon_social).strip().lower())
+                    if cuenta_monday:
+                        resultados_existe.append(perfil_desde_cuenta(cuenta_monday))
+                        st.write(f"✓ {fila.Razon_social} — perfil tomado de Monday (cuenta existente)")
+                    else:
+                        resultados_existe.append(None)
+                        st.write(f"✗ {fila.Razon_social} — no se encontró el registro de Monday (inesperado)")
                 status.update(label="Enriquecimiento completo", state="complete")
 
-            filas_validas = [(idx, r) for idx, r in enumerate(resultados) if r is not None]
-            if filas_validas:
-                indices, datos = zip(*filas_validas)
-                base = df_final.head(len(candidatas)).iloc[list(indices)].reset_index(drop=True)
+            bloques = []
+            for indice_grupo, resultados in (
+                (candidatas_nuevas.index, resultados_nuevas),
+                (df_existe_etapa4.index, resultados_existe),
+            ):
+                validas = [(idx, r) for idx, r in zip(indice_grupo, resultados) if r is not None]
+                if not validas:
+                    continue
+                indices_validos, datos = zip(*validas)
+                base = df_final.loc[list(indices_validos)].reset_index(drop=True)
+                base["Cuenta_item_id"] = df_etapa4.loc[list(indices_validos), "Cuenta_item_id"].values
                 enriquecido = pd.DataFrame(list(datos)).rename(columns=COLUMNAS_ENRIQUECIMIENTO)
-                df_combinado = pd.concat([base, enriquecido], axis=1)
+                bloques.append(pd.concat([base, enriquecido], axis=1))
+
+            if bloques:
+                df_combinado = pd.concat(bloques, ignore_index=True)
 
                 # El sitio del DENUE puede estar vacío o desactualizado (dominio que ya
                 # no responde). Si no pasa el chequeo directo, se trata como si no
-                # existiera y se completa con el que encontró la búsqueda de SerpAPI.
+                # existiera y se completa con el que encontró la búsqueda de SerpAPI
+                # (o el de Monday, para cuentas existentes — viaja en la misma columna).
                 sitios_finales, fuentes_sitio = [], []
                 for _, fila_sitio in df_combinado.iterrows():
                     sitio_denue = str(fila_sitio.get("Sitio web") or "").strip()
@@ -486,7 +521,7 @@ with tab_enriquecimiento:
                     elif sitio_serpapi:
                         sitios_finales.append(sitio_serpapi)
                         fuentes_sitio.append(
-                            "SerpAPI (DENUE vacío)" if not sitio_denue else "SerpAPI (el del DENUE no responde)"
+                            "SerpAPI/Monday (DENUE vacío)" if not sitio_denue else "SerpAPI/Monday (el del DENUE no responde)"
                         )
                     else:
                         sitios_finales.append("")
@@ -616,6 +651,12 @@ with tab_enriquecimiento:
                                     cargo_contacto, linkedin_contacto, es_principal=True,
                                     estado_correo=verificacion["estado"], score_correo=score_final,
                                     confianza_correo=confianza_final, fuente=fuente_contacto,
+                                    cuenta_item_id=fila["Cuenta_item_id"],
+                                    sector_empresa=fila["Actividad económica"],
+                                    personal_estimado_empresa=fila["Personal estimado"],
+                                    tamano_empresa=fila["Banda de tamaño"],
+                                    sitio_web_empresa=fila["Sitio web"],
+                                    correo_empresa=fila["Correo"],
                                 ))
 
                                 for contacto_alt in contactos_fallback:
@@ -627,6 +668,12 @@ with tab_enriquecimiento:
                                             es_principal=False, score_correo=hallazgo_alt["score"],
                                             fuente="Búsqueda por rol",
                                             sources="; ".join(hallazgo_alt["sources"]) if hallazgo_alt["sources"] else None,
+                                            cuenta_item_id=fila["Cuenta_item_id"],
+                                            sector_empresa=fila["Actividad económica"],
+                                            personal_estimado_empresa=fila["Personal estimado"],
+                                            tamano_empresa=fila["Banda de tamaño"],
+                                            sitio_web_empresa=fila["Sitio web"],
+                                            correo_empresa=fila["Correo"],
                                         ))
 
                                 for otro in hunter_correos_del_dominio(dominio, HUNTER_API_KEY):
@@ -634,6 +681,12 @@ with tab_enriquecimiento:
                                         fila["Razón social"], otro["nombre"], otro["correo"], fila["Teléfono"],
                                         otro["cargo"], otro["linkedin"], es_principal=False,
                                         score_correo=otro["confianza"], fuente="Hunter domain search",
+                                        cuenta_item_id=fila["Cuenta_item_id"],
+                                        sector_empresa=fila["Actividad económica"],
+                                        personal_estimado_empresa=fila["Personal estimado"],
+                                        tamano_empresa=fila["Banda de tamaño"],
+                                        sitio_web_empresa=fila["Sitio web"],
+                                        correo_empresa=fila["Correo"],
                                     ))
 
                                 if correo_general:
@@ -700,6 +753,12 @@ with tab_enriquecimiento:
                                             estado_correo=estado_correo, score_correo=score_final,
                                             confianza_correo=confianza_final, fuente="Búsqueda web + Hunter",
                                             sources=fuentes_publicas,
+                                            cuenta_item_id=fila["Cuenta_item_id"],
+                                            sector_empresa=fila["Actividad económica"],
+                                            personal_estimado_empresa=fila["Personal estimado"],
+                                            tamano_empresa=fila["Banda de tamaño"],
+                                            sitio_web_empresa=fila["Sitio web"],
+                                            correo_empresa=fila["Correo"],
                                         ))
                                     st.write(f"✓ {razon} — " + ", ".join(c.nombre for c, *_ in candidatos))
                                 else:
@@ -711,6 +770,12 @@ with tab_enriquecimiento:
                                             razon, otro["nombre"], otro["correo"], fila["Teléfono"],
                                             otro["cargo"], otro["linkedin"], es_principal=False,
                                             score_correo=otro["confianza"], fuente="Hunter domain search",
+                                            cuenta_item_id=fila["Cuenta_item_id"],
+                                            sector_empresa=fila["Actividad económica"],
+                                            personal_estimado_empresa=fila["Personal estimado"],
+                                            tamano_empresa=fila["Banda de tamaño"],
+                                            sitio_web_empresa=fila["Sitio web"],
+                                            correo_empresa=fila["Correo"],
                                         ))
                             except Exception as exc:
                                 st.write(f"✗ {razon} — error: {exc}")
