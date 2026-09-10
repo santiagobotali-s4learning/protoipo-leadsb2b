@@ -9,7 +9,7 @@ import requests
 import streamlit as st
 
 from config import MONDAY_API_KEY, MONDAY_BOARD_CONTACTO, MONDAY_COLUMNAS_CONTACTO, MONDAY_URL
-from utils import _telefono_mx, _texto, _valor_valido
+from utils import _telefono_mx, _valor_valido
 
 
 def monday_graphql(query, variables=None):
@@ -47,54 +47,6 @@ def monday_correo_existe(correo):
     return len(data["boards"][0]["items_page"]["items"]) > 0
 
 
-@st.cache_data(show_spinner="Consultando empresas ya cargadas en Monday...")
-def monday_listar_cuentas():
-    """Nombres normalizados (strip + lower) de 'Cuenta asociada' de TODOS los
-    items del board de Contacto — para descartar en Etapa 3 las empresas que
-    ya tienen al menos un contacto cargado en Monday. Cacheada: paginar todo
-    el board en cada rerun de Streamlit sería lento; se refresca a mano con
-    el botón "Actualizar cartera de Monday" (ver tab_limpios)."""
-    columna_id = MONDAY_COLUMNAS_CONTACTO["Cuenta asociada"]
-    cuentas = set()
-
-    def _sumar(items):
-        for item in items:
-            texto = item["column_values"][0]["text"]
-            if texto and texto.strip():
-                cuentas.add(texto.strip().lower())
-
-    query_inicial = """
-    query ($boardId: ID!, $columnaId: [String!]) {
-      boards(ids: [$boardId]) {
-        items_page(limit: 100) {
-          cursor
-          items { column_values(ids: $columnaId) { text } }
-        }
-      }
-    }
-    """
-    data = monday_graphql(query_inicial, {"boardId": MONDAY_BOARD_CONTACTO, "columnaId": [columna_id]})
-    pagina = data["boards"][0]["items_page"]
-    cursor = pagina["cursor"]
-    _sumar(pagina["items"])
-
-    query_siguiente = """
-    query ($cursor: String!, $columnaId: [String!]) {
-      next_items_page(cursor: $cursor, limit: 100) {
-        cursor
-        items { column_values(ids: $columnaId) { text } }
-      }
-    }
-    """
-    while cursor:
-        data = monday_graphql(query_siguiente, {"cursor": cursor, "columnaId": [columna_id]})
-        pagina = data["next_items_page"]
-        cursor = pagina["cursor"]
-        _sumar(pagina["items"])
-
-    return cuentas
-
-
 @st.cache_data(ttl="1h", show_spinner=False)
 def monday_listar_usuarios():
     """Usuarios reales del workspace de Monday — {nombre: id}. El campo
@@ -108,23 +60,36 @@ def monday_listar_usuarios():
         return {}
 
 
-def monday_crear_contacto(fila, responsable_id=None):
+def monday_crear_contacto(fila, cuenta_item_id, responsable_id=None):
     """Crea un item en el board de Contacto a partir de una fila con el
-    esquema de COLUMNAS_CONTACTO_MONDAY. 'Estado' queda en 'Contactado' —
-    se llama a esta función solo al exportar un contacto ya contactado.
-    'responsable_id' es el ID real de un usuario de Monday (ver
-    monday_listar_usuarios), no un nombre — se omite si no se pasa."""
+    esquema de COLUMNAS_CONTACTO_MONDAY. 'cuenta_item_id' es el item_id
+    real de la cuenta en el board de Cuentas (ver cuentas.py) — se linkea
+    con un board_relation real, no con texto. 'Estado' queda en
+    'Contactado' — se llama a esta función solo al exportar un contacto ya
+    contactado. 'responsable_id' es el ID real de un usuario de Monday (ver
+    monday_listar_usuarios), no un nombre — se omite si no se pasa.
+
+    Todas las columnas de MONDAY_COLUMNAS_CONTACTO son type "text" simple
+    (confirmado empíricamente en el Task 1 — ver task-1-report.md), excepto
+    "Cuenta asociada" que es la única columna board_relation real del
+    board: a diferencia de columnas típicas de Monday con tipos dedicados
+    (status/email/phone/link/date/people), acá se escribe siempre un
+    string plano, nunca el dict tipado que usa la API para esas otras
+    columnas. "Responsable" en particular es también type "text" en este
+    board de prueba (no un people-picker real), así que se escribe el ID
+    numérico de Monday como texto plano — no se resuelve a nombre porque
+    esa no es una limitación de este código sino del esquema del board."""
     columnas = dict(MONDAY_COLUMNAS_CONTACTO)
-    valores = {columnas["Cuenta asociada"]: _texto(fila.get("Cuenta asociada"), "")}
+    valores = {columnas["Cuenta asociada"]: {"item_ids": [int(cuenta_item_id)]}}
 
     correo = fila.get("Correo")
     correo_valido = _valor_valido(correo)
     if correo_valido:
-        valores[columnas["Correo"]] = {"email": correo, "text": correo}
+        valores[columnas["Correo"]] = correo
 
     telefono = _telefono_mx(fila.get("Teléfono (empresa)"))
     if telefono:
-        valores[columnas["Teléfono (empresa)"]] = {"phone": telefono, "countryShortName": "MX"}
+        valores[columnas["Teléfono (empresa)"]] = telefono
 
     if _valor_valido(fila.get("País")):
         valores[columnas["País"]] = str(fila["País"])
@@ -141,16 +106,14 @@ def monday_crear_contacto(fila, responsable_id=None):
         )
 
     if _valor_valido(fila.get("Nivel de cargo")):
-        valores[columnas["Nivel de cargo"]] = {"label": fila["Nivel de cargo"]}
+        valores[columnas["Nivel de cargo"]] = str(fila["Nivel de cargo"])
     if _valor_valido(fila.get("Link de LinkedIn")):
-        valores[columnas["Link de LinkedIn"]] = {"url": fila["Link de LinkedIn"], "text": "LinkedIn"}
+        valores[columnas["Link de LinkedIn"]] = str(fila["Link de LinkedIn"])
     if _valor_valido(fila.get("Fecha de inicio")):
-        valores[columnas["Fecha de inicio"]] = {"date": fila["Fecha de inicio"]}
+        valores[columnas["Fecha de inicio"]] = str(fila["Fecha de inicio"])
     if responsable_id:
-        valores[columnas["Responsable"]] = {
-            "personsAndTeams": [{"id": int(responsable_id), "kind": "person"}]
-        }
-    valores[columnas["Estado"]] = {"label": "Contactado"}
+        valores[columnas["Responsable"]] = str(responsable_id)
+    valores[columnas["Estado"]] = "Contactado"
 
     mutation = """
     mutation ($boardId: ID!, $itemName: String!, $columnValues: JSON!) {
