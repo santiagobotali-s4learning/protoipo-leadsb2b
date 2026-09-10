@@ -24,12 +24,16 @@ HUNTER_URL = "https://api.hunter.io/v2"
 MONDAY_URL = "https://api.monday.com/v2"
 # Board "Contactos" (workspace "Pruebas IA", id 17441169) — IDs de columna
 # reales confirmados empíricamente contra la API (ver Task 1 del plan de
-# tablero de cuentas). OJO: en este board TODAS las columnas (incluida
-# "Estado" y "Cuenta asociada") son de type "text" simple, no "status"/
-# "board_relation" como asumía el plan original — ver task-1-report.md.
+# tablero de cuentas). OJO: en este board TODAS las columnas de texto
+# originales (incluida "Estado") son de type "text" simple, sin labels
+# configurados del lado de Monday — ver task-1-report.md.
+# "Cuenta asociada" apunta a la columna "Cuenta vinculada", creada después
+# de Task 1 como board_relation real (Contactos -> Cuentas) porque el board
+# de prueba no traía ninguna columna de vínculo nativo — la columna de texto
+# original "Cuenta asociada" (text_mm71b8fe) queda sin usar por este código.
 MONDAY_BOARD_CONTACTO = "18430360621"
 MONDAY_COLUMNAS_CONTACTO = {
-    "Cuenta asociada": "text_mm71b8fe",
+    "Cuenta asociada": "board_relation_mm725nna",
     "Correo": "text_mm717z2r",
     "Teléfono (empresa)": "text_mm714vte",
     "Extensión": "text_mm71vz61",
@@ -44,13 +48,15 @@ MONDAY_COLUMNAS_CONTACTO = {
 }
 # Board "Cuentas" (tablero real de prueba, workspace "Pruebas IA", id
 # 17441169) — IDs de columna confirmados empíricamente contra la API (ver
-# Task 1 del plan de tablero de cuentas). OJO: "Convenios" no existe con ese
-# título exacto; el campo real equivalente es "Convenio asociado", de type
-# "text" (NO "board_relation") — ver task-1-report.md para el detalle del
-# shape mismatch y sus implicaciones para los tasks 4 y 5.
+# Task 1 del plan de tablero de cuentas). "Convenios" apunta a la columna
+# "Convenio vinculado", creada después de Task 1 como board_relation real
+# (Cuentas -> board "Convenios", id 18430363328, también dentro de Pruebas
+# IA) — la columna de texto original "Convenio asociado" (text_mm71gsya)
+# queda sin usar por este código. Ver task-1-report.md para el detalle del
+# board original 100% de texto.
 MONDAY_BOARD_CUENTAS = "18430360623"
 MONDAY_COLUMNAS_CUENTAS = {
-    "Convenios": "text_mm71gsya",
+    "Convenios": "board_relation_mm72x2xb",
     "Sector": "text_mm71vga2",
     "Cantidad de empleados": "text_mm714996",
     "Tamaño": "text_mm71ce60",
