@@ -76,7 +76,11 @@ def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_id):
                         "warning", f"{etiqueta} ya existe en Monday (mismo correo) — no se duplica."
                     )
                 else:
-                    monday_crear_contacto(fila, responsable_id=responsable_id)
+                    cuenta_item_id = fila["Cuenta item id"]
+                    if not _valor_valido(cuenta_item_id):
+                        cuenta_item_id = monday_crear_cuenta(fila)
+                        st.session_state["df_contactos"].loc[idx, "Cuenta item id"] = cuenta_item_id
+                    monday_crear_contacto(fila, cuenta_item_id, responsable_id=responsable_id)
                     st.session_state["_monday_aviso"] = ("success", f"{etiqueta} exportado correctamente.")
                 st.session_state["df_contactos"].loc[idx, "Exportado a Monday"] = True
             except Exception as exc:
