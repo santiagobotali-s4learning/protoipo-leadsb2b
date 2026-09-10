@@ -8,6 +8,7 @@ para las reglas de negocio.
 import json
 from datetime import date
 
+import pandas as pd
 import streamlit as st
 
 from config import (
@@ -42,7 +43,11 @@ def clasificar_cuentas(df_empresas, cuentas_reales):
 
     df = df_empresas.copy()
     df["Cuenta_item_id"] = item_ids
-    df["_gestionada"] = gestionadas
+    # dtype explícito + índice: con un df_empresas vacío, `gestionadas` es una lista
+    # Python vacía y pandas infiere dtype float64 para la columna nueva (en vez de
+    # bool), lo que rompe `~df_existe["_gestionada"]` más abajo (queda como una
+    # Series float, no boolean) y a su vez el .drop(columns="_gestionada") posterior.
+    df["_gestionada"] = pd.Series(gestionadas, index=df.index, dtype=bool)
 
     df_nueva = df[df["Cuenta_item_id"].isna()].drop(columns="_gestionada")
     df_existe = df[df["Cuenta_item_id"].notna()]
@@ -94,14 +99,14 @@ def _linked_item_ids(column_value):
     código, que intentaba leer 'linkedPulseIds' de un json.loads(value))."""
     if not column_value:
         return []
-    return list(column_value.get("linked_item_ids") or [])
+    return [str(i) for i in (column_value.get("linked_item_ids") or [])]
 
 
 def _estados_contacto_por_cuenta():
     """{cuenta_item_id (str): set(labels de 'Estado')} de todos los
     contactos del board de Contacto que ya tienen una cuenta vinculada —
-    bulk, mismo patrón de paginación que monday_listar_cuentas() en
-    monday.py."""
+    trae todos los items en bulk, paginando con cursor (items_page /
+    next_items_page) igual que monday_listar_cuentas_reales() más abajo."""
     columna_cuenta = MONDAY_COLUMNAS_CONTACTO["Cuenta asociada"]
     columna_estado = MONDAY_COLUMNAS_CONTACTO["Estado"]
     estados_por_cuenta = {}
@@ -153,8 +158,9 @@ def _estados_contacto_por_cuenta():
 def monday_listar_cuentas_reales():
     """{nombre_normalizado: {item_id, tiene_convenio, tiene_contacto_exitoso,
     pagina_web, cantidad_empleados, tamano}} de TODOS los items del board de
-    Cuentas real. Cacheada sin TTL, refresco manual (mismo patrón que
-    monday_listar_cuentas() en monday.py)."""
+    Cuentas real, trayendo todo en bulk con paginación por cursor. Cacheada
+    sin TTL, refresco manual (botón "Actualizar cuentas de Monday" en
+    app.py llama a monday_listar_cuentas_reales.clear())."""
     columnas_a_leer = ["Convenios", "Página web", "Cantidad de empleados", "Tamaño"]
     ids_columnas = [MONDAY_COLUMNAS_CUENTAS[c] for c in columnas_a_leer]
     cuentas = {}
@@ -214,7 +220,8 @@ def monday_crear_cuenta(fila):
     un pre-lead de cuenta nueva (nunca automático). Devuelve el item_id
     real creado."""
     # Todas las columnas de MONDAY_COLUMNAS_CUENTAS son type "text" simple
-    # (confirmado empíricamente en el Task 1 — ver task-1-report.md): a
+    # (confirmado empíricamente en el Task 1 — ver la nota al inicio de
+    # structuraCuentas.md): a
     # diferencia de columnas típicas de Monday con tipos dedicados
     # (status/email/phone/link/date), acá se escribe siempre un string
     # plano, nunca el dict tipado que usa la API para esas otras columnas.

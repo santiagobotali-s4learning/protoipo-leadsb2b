@@ -1,6 +1,6 @@
 """
 Integración con la API GraphQL de Monday.com: helper genérico de consulta,
-chequeo de duplicados por correo, listado de cuentas/usuarios y creación de
+chequeo de duplicados por correo, listado de usuarios y creación de
 items en el board de Contacto (ver contacto.md para el esquema del board).
 """
 import json
@@ -49,10 +49,12 @@ def monday_correo_existe(correo):
 
 @st.cache_data(ttl="1h", show_spinner=False)
 def monday_listar_usuarios():
-    """Usuarios reales del workspace de Monday — {nombre: id}. El campo
-    'Responsable' es una columna 'people', que en la API de Monday necesita
-    el ID real de un usuario, no texto libre; por eso el selector se arma
-    con esta lista en vez de dejar escribir cualquier nombre."""
+    """Usuarios reales del workspace de Monday — {nombre: id}. Se usa para
+    armar el selector de 'Responsable' con IDs reales de usuario en vez de
+    dejar escribir cualquier nombre a mano (evita responsables inventados o
+    mal escritos), aunque en este board 'Responsable' termine siendo una
+    columna 'text' simple (ver monday_crear_contacto más abajo) — el ID se
+    escribe como texto plano, no vía un people-picker nativo de Monday."""
     try:
         data = monday_graphql("{ users { id name } }")
         return {u["name"]: u["id"] for u in data["users"]}
@@ -70,7 +72,8 @@ def monday_crear_contacto(fila, cuenta_item_id, responsable_id=None):
     monday_listar_usuarios), no un nombre — se omite si no se pasa.
 
     Todas las columnas de MONDAY_COLUMNAS_CONTACTO son type "text" simple
-    (confirmado empíricamente en el Task 1 — ver task-1-report.md), excepto
+    (confirmado empíricamente en el Task 1 — ver la nota al inicio de
+    structuraContacto.md), excepto
     "Cuenta asociada" que es la única columna board_relation real del
     board: a diferencia de columnas típicas de Monday con tipos dedicados
     (status/email/phone/link/date/people), acá se escribe siempre un

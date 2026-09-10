@@ -79,7 +79,14 @@ def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_id):
                     cuenta_item_id = fila["Cuenta item id"]
                     if not _valor_valido(cuenta_item_id):
                         cuenta_item_id = monday_crear_cuenta(fila)
-                        st.session_state["df_contactos"].loc[idx, "Cuenta item id"] = cuenta_item_id
+                        # Propaga el id nuevo a TODAS las filas de la misma cuenta (una
+                        # por candidato de contacto, ver fila_contacto en utils.py) — no
+                        # solo a `idx` — para no crear una cuenta duplicada en Monday
+                        # cuando se exporte un segundo contacto de la misma empresa.
+                        mismo_nombre = (
+                            st.session_state["df_contactos"]["Cuenta asociada"] == fila["Cuenta asociada"]
+                        )
+                        st.session_state["df_contactos"].loc[mismo_nombre, "Cuenta item id"] = cuenta_item_id
                     monday_crear_contacto(fila, cuenta_item_id, responsable_id=responsable_id)
                     st.session_state["_monday_aviso"] = ("success", f"{etiqueta} exportado correctamente.")
                 st.session_state["df_contactos"].loc[idx, "Exportado a Monday"] = True
@@ -355,7 +362,10 @@ with tab_limpios:
     with st.container(border=True):
         st.markdown("**Etapa 3 — Clasificación contra el board de Cuentas**")
         if not MONDAY_API_KEY or not MONDAY_BOARD_CUENTAS:
-            st.warning("Falta MONDAY_API_KEY y/o MONDAY_BOARD_CUENTAS en el .env para comparar contra Monday.")
+            st.warning(
+                "Falta MONDAY_API_KEY en el .env, o MONDAY_BOARD_CUENTAS no está "
+                "configurado en config.py, para comparar contra Monday."
+            )
             df_etapa4 = df_etapa3.copy()
             df_etapa4["Cuenta_item_id"] = None
         else:
@@ -401,7 +411,7 @@ with tab_limpios:
             border=True,
         )
         st.metric(
-            "Tras dedup",
+            "Tras clasificación",
             len(df_etapa4),
             delta=f"-{len(df_etapa3) - len(df_etapa4)}",
             delta_color="off",
@@ -459,10 +469,27 @@ with tab_enriquecimiento:
         st.markdown("**Datos actuales antes de enriquecer**")
         st.dataframe(df_final.head(N_EMPRESAS_ENRIQUECER), hide_index=True)
         if not df_existe_etapa4.empty:
-            st.caption(
+            # Este grupo NO tiene tope (a diferencia de candidatas_nuevas, capado por
+            # N_EMPRESAS_ENRIQUECER) — es intencional: el objetivo de esta funcionalidad
+            # es justamente no perder oportunidades de búsqueda de contacto para cuentas
+            # que ya existen en Monday pero todavía no están gestionadas. Como sí entran
+            # de lleno al paso "Verificar y buscar contactos" (Hunter/SerpAPI/Claude), un
+            # lote grande puede disparar muchas llamadas a esas APIs — se avisa con
+            # st.warning en vez de st.caption a partir de 10 empresas (umbral arbitrario:
+            # suficiente para no molestar en pruebas chicas, bajo para importar en serio).
+            UMBRAL_AVISO_COSTO = 10
+            _mensaje_existe = (
                 f"{len(df_existe_etapa4)} empresa(s) ya existen en Monday — se procesan igual, "
                 "sin re-enriquecer perfil."
             )
+            if len(df_existe_etapa4) > UMBRAL_AVISO_COSTO:
+                st.warning(
+                    _mensaje_existe + " Al no tener tope, esto puede disparar muchas "
+                    "llamadas a Hunter/SerpAPI/Claude en el paso 'Verificar y buscar "
+                    "contactos' más abajo."
+                )
+            else:
+                st.caption(_mensaje_existe)
 
         if st.button("Enriquecer estas empresas", icon=":material/travel_explore:"):
             resultados_nuevas = []

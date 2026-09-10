@@ -12,7 +12,15 @@ def test_empresa_sin_match_es_nueva():
     assert list(df_nueva["Razon_social"]) == ["Empresa Nueva SA"]
     assert df_necesita.empty
     assert df_gestionada.empty
-    assert df_nueva.iloc[0]["Cuenta_item_id"] is None
+    assert pd.isna(df_nueva.iloc[0]["Cuenta_item_id"])
+
+
+def test_clasificar_cuentas_con_dataframe_vacio():
+    df_vacio = pd.DataFrame({"Razon_social": [], "Personal_min": []})
+    df_nueva, df_necesita, df_gestionada = clasificar_cuentas(df_vacio, {})
+    assert df_nueva.empty
+    assert df_necesita.empty
+    assert df_gestionada.empty
 
 
 def test_empresa_existente_sin_convenio_ni_contacto_exitoso_necesita_contacto():

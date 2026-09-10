@@ -26,11 +26,13 @@ MONDAY_URL = "https://api.monday.com/v2"
 # reales confirmados empíricamente contra la API (ver Task 1 del plan de
 # tablero de cuentas). OJO: en este board TODAS las columnas de texto
 # originales (incluida "Estado") son de type "text" simple, sin labels
-# configurados del lado de Monday — ver task-1-report.md.
+# configurados del lado de Monday — ver la nota al inicio de
+# structuraContacto.md.
 # "Cuenta asociada" apunta a la columna "Cuenta vinculada", creada después
 # de Task 1 como board_relation real (Contactos -> Cuentas) porque el board
 # de prueba no traía ninguna columna de vínculo nativo — la columna de texto
-# original "Cuenta asociada" (text_mm71b8fe) queda sin usar por este código.
+# original "Cuenta asociada" (text_mm71b8fe) queda sin usar por este código
+# (ver también la nota al inicio de structuraContacto.md).
 MONDAY_BOARD_CONTACTO = "18430360621"
 MONDAY_COLUMNAS_CONTACTO = {
     "Cuenta asociada": "board_relation_mm725nna",
@@ -52,8 +54,8 @@ MONDAY_COLUMNAS_CONTACTO = {
 # "Convenio vinculado", creada después de Task 1 como board_relation real
 # (Cuentas -> board "Convenios", id 18430363328, también dentro de Pruebas
 # IA) — la columna de texto original "Convenio asociado" (text_mm71gsya)
-# queda sin usar por este código. Ver task-1-report.md para el detalle del
-# board original 100% de texto.
+# queda sin usar por este código. Ver la nota al inicio de
+# structuraCuentas.md para el detalle del board original 100% de texto.
 MONDAY_BOARD_CUENTAS = "18430360623"
 MONDAY_COLUMNAS_CUENTAS = {
     "Convenios": "board_relation_mm72x2xb",
@@ -72,7 +74,8 @@ MONDAY_COLUMNAS_CUENTAS = {
 # OJO: "Estado" es una columna type "text" simple, sin labels configurados
 # del lado de Monday (settings_str vacío) — no hay validación de que el
 # valor escrito coincida con uno de estos 8 estados, queda a cargo del
-# código que escribe/lee esta columna (ver task-1-report.md).
+# código que escribe/lee esta columna (ver la nota al inicio de
+# structuraContacto.md).
 ESTADOS_CONTACTO_EXITOSO = {"Contactado", "Convenio firmado"}
 MODELO_ENRIQUECIMIENTO = "claude-haiku-4-5"
 ENTIDAD_TODOS = "00"
