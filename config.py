@@ -22,24 +22,52 @@ BASE_URL = "https://www.inegi.org.mx/app/api/denue/v1/consulta/BuscarAreaActEstr
 SERPAPI_URL = "https://serpapi.com/search.json"
 HUNTER_URL = "https://api.hunter.io/v2"
 MONDAY_URL = "https://api.monday.com/v2"
-# Board "pruebaContacto" (workspace "Espacio de trabajo principal"), creado
-# vía API con el esquema de contacto.md. IDs de columna reales de ese board —
-# no son adivinados, se armó el board a propósito con este mapeo.
-MONDAY_BOARD_CONTACTO = "18429143194"
+# Board "Contactos" (workspace "Pruebas IA", id 17441169) — IDs de columna
+# reales confirmados empíricamente contra la API (ver Task 1 del plan de
+# tablero de cuentas). OJO: en este board TODAS las columnas (incluida
+# "Estado" y "Cuenta asociada") son de type "text" simple, no "status"/
+# "board_relation" como asumía el plan original — ver task-1-report.md.
+MONDAY_BOARD_CONTACTO = "18430360621"
 MONDAY_COLUMNAS_CONTACTO = {
-    "Cuenta asociada": "text_mm6s8x5b",
-    "Correo": "email_mm6szmcn",
-    "Teléfono (empresa)": "phone_mm6sxj79",
-    "Extensión": "text_mm6svwq7",
-    "País": "text_mm6s49m7",
-    "Nivel de cargo": "color_mm6sksm5",
-    "Nombre de cargo": "text_mm6shaw1",
-    "Link de LinkedIn": "link_mm6syh0t",
-    "Rol en la decisión": "color_mm6s277r",
-    "Estado": "color_mm6swhpj",
-    "Fecha de inicio": "date_mm6scfky",
-    "Responsable": "multiple_person_mm6shxmf",
+    "Cuenta asociada": "text_mm71b8fe",
+    "Correo": "text_mm717z2r",
+    "Teléfono (empresa)": "text_mm714vte",
+    "Extensión": "text_mm71vz61",
+    "País": "text_mm7173en",
+    "Nivel de cargo": "text_mm71gzey",
+    "Nombre de cargo": "text_mm715hwe",
+    "Link de LinkedIn": "text_mm71cj9k",
+    "Rol en la decisión": "text_mm718qtq",
+    "Estado": "text_mm719jdf",
+    "Fecha de inicio": "text_mm71n8qa",
+    "Responsable": "text_mm71erf3",
 }
+# Board "Cuentas" (tablero real de prueba, workspace "Pruebas IA", id
+# 17441169) — IDs de columna confirmados empíricamente contra la API (ver
+# Task 1 del plan de tablero de cuentas). OJO: "Convenios" no existe con ese
+# título exacto; el campo real equivalente es "Convenio asociado", de type
+# "text" (NO "board_relation") — ver task-1-report.md para el detalle del
+# shape mismatch y sus implicaciones para los tasks 4 y 5.
+MONDAY_BOARD_CUENTAS = "18430360623"
+MONDAY_COLUMNAS_CUENTAS = {
+    "Convenios": "text_mm71gsya",
+    "Sector": "text_mm71vga2",
+    "Cantidad de empleados": "text_mm714996",
+    "Tamaño": "text_mm71ce60",
+    "País": "text_mm71fen5",
+    "Página web": "text_mm71tbvy",
+    "E-Mail": "text_mm71ksmd",
+    "Teléfono": "text_mm718nrr",
+    "Fecha de inicio": "text_mm718xd5",
+}
+# Estados de MONDAY_COLUMNAS_CONTACTO["Estado"] que cuentan como gestión
+# avanzada/exitosa — una cuenta con al menos un contacto en uno de estos
+# estados no necesita más contactos nuevos (ver spec, sección 6).
+# OJO: "Estado" es una columna type "text" simple, sin labels configurados
+# del lado de Monday (settings_str vacío) — no hay validación de que el
+# valor escrito coincida con uno de estos 8 estados, queda a cargo del
+# código que escribe/lee esta columna (ver task-1-report.md).
+ESTADOS_CONTACTO_EXITOSO = {"Contactado", "Convenio firmado"}
 MODELO_ENRIQUECIMIENTO = "claude-haiku-4-5"
 ENTIDAD_TODOS = "00"
 ESTRATO_TODOS = "0"
