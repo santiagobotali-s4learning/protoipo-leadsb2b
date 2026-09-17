@@ -80,13 +80,13 @@ def perfil_desde_cuenta(cuenta_monday):
         "resumen_actividad": None,
         "senales_riesgo": False,
         "resumen_riesgo": None,
-        "contacto_rrhh": None,
-        "contacto_rrhh_url": None,
         "confianza_coincidencia": "alta",
         "evidencia": (
             "Perfil tomado del board de Cuentas en Monday (cuenta ya existente) "
             "— no se re-enriqueció con búsqueda web."
         ),
+        "tipo_empresa": None,
+        "rfc": None,
     }
 
 
@@ -242,6 +242,26 @@ def monday_crear_cuenta(fila):
         valores[columnas["Página web"]] = str(fila["Sitio web empresa"])
     valores[columnas["País"]] = "México"
     valores[columnas["Fecha de inicio"]] = date.today().isoformat()
+    # Grupo empresarial (probable): "Sí — ..." o "No", calculado en la Etapa 3
+    # (marcar_grupo_corporativo). Se parte en Sí/No para la columna dedicada
+    # y se guarda el detalle (con qué otra empresa comparte dominio) en
+    # "Grupo Empresarial" — no hay un nombre de grupo real, es lo más
+    # cercano que el pipeline puede armar sin ese dato.
+    grupo = fila.get("Grupo empresarial")
+    if _valor_valido(grupo):
+        valores[columnas["Pertenece a algun grupo empresarial"]] = (
+            "Si" if str(grupo).strip().lower().startswith("sí") else "No"
+        )
+        valores[columnas["Grupo Empresarial"]] = str(grupo)
+    if _valor_valido(fila.get("Tipo empresa")):
+        valores[columnas["Tipo"]] = str(fila["Tipo empresa"])
+    if _valor_valido(fila.get("Descripcion empresa")):
+        valores[columnas["Descripcion"]] = str(fila["Descripcion empresa"])
+    # RFC: se busca por enriquecimiento (Serper + Claude) sin verificación
+    # oficial — se antepone un aviso para que no se use como dato certero
+    # sin revisar (ver diseño acordado, RFC/NIT/RUC = confianza baja).
+    if _valor_valido(fila.get("RFC empresa")):
+        valores[columnas["RFC/NIT/RUC"]] = f"{fila['RFC empresa']} (no verificado, revisar antes de usar)"
 
     mutation = """
     mutation ($boardId: ID!, $itemName: String!, $columnValues: JSON!) {

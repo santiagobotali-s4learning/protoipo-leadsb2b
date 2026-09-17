@@ -1,7 +1,7 @@
 """
-Enriquecimiento de empresas vía búsqueda web (SerpAPI) + análisis con Claude
-(Anthropic): LinkedIn, señales de actividad/riesgo, y búsqueda de contactos
-por rol cuando el DENUE no trae un correo utilizable.
+Enriquecimiento de empresas vía búsqueda web (Serper.dev) + análisis con
+Claude (Anthropic): LinkedIn, señales de actividad/riesgo, y búsqueda de
+contactos por rol cuando el DENUE no trae un correo utilizable.
 """
 from typing import Optional
 
@@ -10,7 +10,7 @@ import requests
 import streamlit as st
 from pydantic import BaseModel, Field
 
-from config import MODELO_ENRIQUECIMIENTO, ROLES_CONTACTO, SERPAPI_URL, TODOS_LOS_ROLES
+from config import MODELO_ENRIQUECIMIENTO, ROLES_CONTACTO, SERPER_URL, TODOS_LOS_ROLES
 
 
 def roles_a_buscar(rol_elegido):
@@ -66,17 +66,6 @@ class EnriquecimientoEmpresa(BaseModel):
     resumen_riesgo: Optional[str] = Field(
         default=None, description="Resumen breve en español de la señal de riesgo, si aplica"
     )
-    contacto_rrhh: Optional[str] = Field(
-        default=None,
-        description=(
-            "Nombre y cargo de una persona concreta de RRHH/compras/talento en esta "
-            "empresa (ej. 'Lourdes González — Jefe de recursos humanos'), si se "
-            "encontró un perfil real. None si no se encontró a nadie."
-        ),
-    )
-    contacto_rrhh_url: Optional[str] = Field(
-        default=None, description="URL del perfil de LinkedIn de ese contacto, si se encontró"
-    )
     confianza_coincidencia: str = Field(
         description=(
             "'alta', 'media' o 'baja': qué tan seguro estás de que los resultados de "
@@ -88,52 +77,64 @@ class EnriquecimientoEmpresa(BaseModel):
     evidencia: str = Field(
         description="Cita textual breve (1-3 frases) de los snippets que respaldan las conclusiones"
     )
+    tipo_empresa: Optional[str] = Field(
+        default=None,
+        description=(
+            "Clasificación de la empresa en UNA de estas categorías exactas: "
+            "'Empresa privada', 'Empresa pública', 'Institucion educativa pública', "
+            "'Institucion educativa privada', 'Secretarías de Gobierno', 'Alcaldías', "
+            "'Municipios', 'DIF', 'Confederaciones', 'Cámaras empresariales', "
+            "'Sindicatos', 'Fundaciones', 'Capitales Mixtos'. Inferí a partir de la "
+            "razón social y la actividad económica (DENUE) — no hace falta evidencia "
+            "de los resultados de búsqueda para esto. Si no hay ninguna señal de que "
+            "sea otra cosa, usá 'Empresa privada' (es la categoría más común en el DENUE)."
+        ),
+    )
+    rfc: Optional[str] = Field(
+        default=None,
+        description=(
+            "RFC (Registro Federal de Contribuyentes mexicano) de la empresa, SOLO si "
+            "aparece explícitamente y de forma legible en los resultados de búsqueda, "
+            "con certeza de que corresponde a ESTA empresa. Nunca lo inventes, lo "
+            "deduzcas del nombre ni lo completes a medias. None si no aparece."
+        ),
+    )
 
 
 @st.cache_data(ttl="24h", show_spinner=False)
-def buscar_serpapi(query, api_key):
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": api_key,
-        "hl": "es",
-        "gl": "mx",
-        "num": 8,
-    }
-    # Un timeout de 30s en SerpAPI suele ser un bache transitorio — se
+def buscar_serper(query, api_key):
+    payload = {"q": query, "hl": "es", "gl": "mx", "num": 8}
+    headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
+    # Un timeout de 30s en Serper suele ser un bache transitorio — se
     # reintenta una vez antes de darlo por perdido.
     response = None
     for intento in range(2):
         try:
-            response = requests.get(SERPAPI_URL, params=params, timeout=30)
+            response = requests.post(SERPER_URL, json=payload, headers=headers, timeout=30)
             break
         except requests.exceptions.Timeout:
             if intento == 1:
                 raise
     response.raise_for_status()
     data = response.json()
-    if "error" in data:
-        # SerpAPI devuelve un campo "error" (no una lista vacía) cuando Google
-        # simplemente no tiene resultados para la búsqueda — no es una falla.
-        if "hasn't returned any results" in data["error"].lower():
-            return []
-        raise ValueError(data["error"])
+    # A diferencia de SerpAPI, Serper no marca "sin resultados" con un campo
+    # "error" — devuelve "organic": [] directamente (confirmado empíricamente).
     return [
         {
             "titulo": r.get("title", ""),
             "link": r.get("link", ""),
             "snippet": r.get("snippet", ""),
         }
-        for r in data.get("organic_results", [])
+        for r in data.get("organic", [])
     ]
 
 
-def _buscar_serpapi_seguro(query, api_key):
-    """Como buscar_serpapi, pero una falla (ej. timeout tras el reintento) no
+def _buscar_serper_seguro(query, api_key):
+    """Como buscar_serper, pero una falla (ej. timeout tras el reintento) no
     tira una excepción — devuelve None para que el resto de las búsquedas de
     la empresa sigan corriendo en vez de perderse todas por una sola falla."""
     try:
-        return buscar_serpapi(query, api_key)
+        return buscar_serper(query, api_key)
     except Exception:
         return None
 
@@ -147,35 +148,35 @@ def _formatear_resultados(resultados):
 
 
 @st.cache_data(ttl="24h", show_spinner=False)
-def enriquecer_empresa(razon_social, actividad, ubicacion, serpapi_key, anthropic_key):
+def enriquecer_empresa(razon_social, actividad, ubicacion, serper_api_key, anthropic_key):
     # Sin comillas: la razón social del DENUE (nombre legal, ej. "DISTRIBUIDORA
     # LIVERPOOL") casi nunca coincide textualmente con el nombre comercial que
     # usa la empresa en LinkedIn/prensa (ej. "El Puerto de Liverpool") — forzar
     # coincidencia exacta hacía fallar la búsqueda casi siempre.
-    resultados_linkedin = _buscar_serpapi_seguro(f"{razon_social} site:linkedin.com/company/", serpapi_key)
-    resultados_empleo = _buscar_serpapi_seguro(
-        f"{razon_social} México (empleados OR colaboradores OR vacantes)", serpapi_key
+    # "empleados" sumado a la búsqueda de LinkedIn (en vez de una búsqueda de
+    # vacantes aparte) empuja a Google a mostrar la sub-página "Vida en la
+    # empresa" de LinkedIn, que expone la cifra real de plantilla cuando
+    # está pública — confirmado empíricamente. Sin ese término, la única
+    # alternativa probada devolvía ruido de bolsas de trabajo (Indeed,
+    # Computrabajo), sin ningún dato de plantilla real.
+    resultados_linkedin = _buscar_serper_seguro(
+        f"{razon_social} site:linkedin.com/company/ empleados", serper_api_key
     )
-    resultados_actividad = _buscar_serpapi_seguro(
+    resultados_actividad = _buscar_serper_seguro(
         f'{razon_social} (cierre OR quiebra OR demanda OR expansión OR "nueva sucursal" OR contratando)',
-        serpapi_key,
+        serper_api_key,
     )
-    resultados_contacto = _buscar_serpapi_seguro(
-        f'{razon_social} México ("recursos humanos" OR "director de compras" OR '
-        '"gerente de compras" OR "talent acquisition") site:linkedin.com/in/',
-        serpapi_key,
-    )
-    resultados_sitio = _buscar_serpapi_seguro(f"{razon_social} México sitio oficial", serpapi_key)
+    resultados_sitio = _buscar_serper_seguro(f"{razon_social} México sitio oficial", serper_api_key)
+    resultados_rfc = _buscar_serper_seguro(f'"{razon_social}" RFC', serper_api_key)
 
     contexto = (
         f"Empresa (según DENUE): {razon_social}\n"
         f"Actividad económica (DENUE): {actividad}\n"
         f"Ubicación (DENUE): {ubicacion}\n\n"
         f"Resultados de búsqueda 'LinkedIn':\n{_formatear_resultados(resultados_linkedin)}\n\n"
-        f"Resultados de búsqueda 'empleo/vacantes':\n{_formatear_resultados(resultados_empleo)}\n\n"
         f"Resultados de búsqueda 'actividad/riesgo':\n{_formatear_resultados(resultados_actividad)}\n\n"
-        f"Resultados de búsqueda 'contacto RRHH/compras':\n{_formatear_resultados(resultados_contacto)}\n\n"
-        f"Resultados de búsqueda 'sitio oficial':\n{_formatear_resultados(resultados_sitio)}"
+        f"Resultados de búsqueda 'sitio oficial':\n{_formatear_resultados(resultados_sitio)}\n\n"
+        f"Resultados de búsqueda 'RFC':\n{_formatear_resultados(resultados_rfc)}"
     )
 
     client = anthropic.Anthropic(api_key=anthropic_key)
@@ -189,7 +190,9 @@ def enriquecer_empresa(razon_social, actividad, ubicacion, serpapi_key, anthropi
             "aproximada) — si no hay certeza, marcá confianza baja. No inventes datos "
             "que no estén respaldados por los resultados de búsqueda. Para sitio_web: "
             "solo el dominio propio de la empresa, nunca linkedin.com, directorios de "
-            "terceros (páginas amarillas, cámaras empresariales) ni redes sociales."
+            "terceros (páginas amarillas, cámaras empresariales) ni redes sociales. "
+            "Para rfc: es el único campo donde una alucinación es especialmente grave "
+            "(se usa en documentos formales) — dejalo en None ante cualquier duda."
         ),
         messages=[{"role": "user", "content": contexto}],
         output_format=EnriquecimientoEmpresa,
@@ -211,9 +214,9 @@ class ContactoEncontrado(BaseModel):
 
 
 @st.cache_data(ttl="24h", show_spinner=False)
-def buscar_contacto_por_rol(razon_social, terminos_rol, serpapi_key, anthropic_key):
-    resultados = buscar_serpapi(
-        f"{razon_social} México ({terminos_rol}) site:linkedin.com/in/", serpapi_key
+def buscar_contacto_por_rol(razon_social, terminos_rol, serper_api_key, anthropic_key):
+    resultados = buscar_serper(
+        f"{razon_social} México ({terminos_rol}) site:linkedin.com/in/", serper_api_key
     )
     contexto = (
         f"Empresa: {razon_social}\n\n"
@@ -231,5 +234,48 @@ def buscar_contacto_por_rol(razon_social, terminos_rol, serpapi_key, anthropic_k
         ),
         messages=[{"role": "user", "content": contexto}],
         output_format=ContactoEncontrado,
+    )
+    return response.parsed_output
+
+
+class LinkedInPersona(BaseModel):
+    linkedin_url: Optional[str] = Field(
+        default=None,
+        description="URL del perfil de LinkedIn de esta persona en esta empresa, si se encontró",
+    )
+    confianza_coincidencia: str = Field(
+        description=(
+            "'alta', 'media' o 'baja': qué tan seguro estás de que el perfil encontrado "
+            "corresponde a ESTA persona en ESTA empresa (no un homónimo en otra empresa "
+            "o ciudad)."
+        )
+    )
+
+
+@st.cache_data(ttl="24h", show_spinner=False)
+def buscar_linkedin_de_persona(nombre, razon_social, serper_api_key, anthropic_key):
+    """Busca el LinkedIn de una persona ya identificada (con nombre real) cuando
+    la fuente que la trajo (Hunter Combined Enrichment o Domain Search) no traía
+    ese dato — mismo patrón que buscar_contacto_por_rol, pero la búsqueda parte
+    de un nombre concreto en vez de un rol genérico."""
+    resultados = buscar_serper(f"{nombre} {razon_social} site:linkedin.com/in/", serper_api_key)
+    contexto = (
+        f"Persona: {nombre}\n"
+        f"Empresa: {razon_social}\n\n"
+        f"Resultados de búsqueda de perfiles de LinkedIn:\n{_formatear_resultados(resultados)}"
+    )
+    client = anthropic.Anthropic(api_key=anthropic_key)
+    response = client.messages.parse(
+        model=MODELO_ENRIQUECIMIENTO,
+        max_tokens=256,
+        system=(
+            "Identificás, a partir de resultados de búsqueda web, el perfil de LinkedIn de "
+            "una persona concreta que trabaja en una empresa concreta. Verificá que el "
+            "perfil mencione efectivamente esa empresa antes de darlo por válido — si no "
+            "hay certeza (ej. homónimo en otra empresa), marcá confianza baja y dejá "
+            "linkedin_url en None. No inventes URLs."
+        ),
+        messages=[{"role": "user", "content": contexto}],
+        output_format=LinkedInPersona,
     )
     return response.parsed_output

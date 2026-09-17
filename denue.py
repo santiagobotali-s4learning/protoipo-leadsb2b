@@ -10,7 +10,14 @@ import requests
 import streamlit as st
 
 from catalogos import ESTRATOS
-from config import BANDAS_TOTALES, BASE_URL, COLUMNAS_PRIORITARIAS
+from config import (
+    BANDAS_TOTALES,
+    BASE_URL,
+    COLUMNAS_PRIORITARIAS,
+    SECTOR_MONDAY_PALABRAS_CLAVE,
+    SECTOR_MONDAY_POR_SCIAN,
+    TAMANOS_MONDAY,
+)
 from utils import dominio_de_empresa
 
 
@@ -66,6 +73,32 @@ def banda_total(personal_min):
     return BANDAS_TOTALES[-1][1]
 
 
+def tamano_monday(personal_min):
+    """Micro/Pequeña/Mediana/Grande para la columna 'Tamano' del board de
+    Cuentas — cortes simples y únicos (no por sector), definidos por el
+    usuario, distintos de BANDAS_TOTALES (que sirve para filtrar/mostrar en
+    la UI, no para exportar a Monday)."""
+    for techo, etiqueta in TAMANOS_MONDAY:
+        if personal_min <= techo:
+            return etiqueta
+    return "Grande"
+
+
+def sector_monday(clase_actividad, clase_actividad_id):
+    """Uno de los 25 sectores del dropdown 'Sector' del board de Cuentas, a
+    partir de la Clase_actividad (texto SCIAN) y su código. Primero prueba
+    palabras clave (para sub-sectores que el SCIAN de 2 dígitos no separa,
+    ej. Automotriz dentro de Manufactureras); si ninguna matchea, cae al
+    sector SCIAN de 2 dígitos. 'Servicios' es el default si no hay
+    código o no está en la tabla — no hay 'sector desconocido' en el dropdown."""
+    texto = str(clase_actividad or "").lower()
+    for claves, etiqueta in SECTOR_MONDAY_PALABRAS_CLAVE:
+        if any(clave in texto for clave in claves):
+            return etiqueta
+    prefijo = str(clase_actividad_id or "")[:2]
+    return SECTOR_MONDAY_POR_SCIAN.get(prefijo, "Servicios")
+
+
 def primero_no_vacio(serie):
     valores = serie.astype(str).str.strip()
     no_vacios = valores[(valores != "") & (valores.str.lower() != "nan")]
@@ -107,6 +140,8 @@ def agrupar_por_empresa(df):
         personal_max = None if sin_techo else int(sub["_estrato_max"].sum())
         razon_social = sub.iloc[0]["Razon_social"]
         razon_social = razon_social if str(razon_social).strip() else primero_no_vacio(sub["Nombre"])
+        clase_actividad = primero_no_vacio(sub["Clase_actividad"])
+        clase_actividad_id = primero_no_vacio(sub["CLASE_ACTIVIDAD_ID"])
         filas.append(
             {
                 "Razon_social": razon_social,
@@ -117,19 +152,21 @@ def agrupar_por_empresa(df):
                 "Personal_estimado": f"{personal_min}+" if sin_techo else f"{personal_min}–{personal_max}",
                 "Personal_punto_medio": None if sin_techo else round((personal_min + personal_max) / 2),
                 "Banda_total": banda_total(personal_min),
+                "Tamano_monday": tamano_monday(personal_min),
                 "Correo_e": primero_no_vacio(sub["Correo_e"]),
                 "Telefono": primero_no_vacio(sub["Telefono"]),
                 "Sitio_internet": primero_no_vacio(sub["Sitio_internet"]),
-                "Clase_actividad": primero_no_vacio(sub["Clase_actividad"]),
-                "CLASE_ACTIVIDAD_ID": primero_no_vacio(sub["CLASE_ACTIVIDAD_ID"]),
+                "Clase_actividad": clase_actividad,
+                "CLASE_ACTIVIDAD_ID": clase_actividad_id,
+                "Sector_monday": sector_monday(clase_actividad, clase_actividad_id),
                 "Ubicacion": primero_no_vacio(sub["Ubicacion"]),
                 "Fecha_Alta": primero_no_vacio(sub["Fecha_Alta"]),
             }
         )
     columnas = [
         "Razon_social", "Nombre", "Sucursales", "Personal_estimado", "Personal_punto_medio", "Banda_total",
-        "Correo_e", "Telefono", "Sitio_internet", "Clase_actividad", "CLASE_ACTIVIDAD_ID",
-        "Ubicacion", "Fecha_Alta", "Personal_min", "Personal_max",
+        "Tamano_monday", "Correo_e", "Telefono", "Sitio_internet", "Clase_actividad", "CLASE_ACTIVIDAD_ID",
+        "Sector_monday", "Ubicacion", "Fecha_Alta", "Personal_min", "Personal_max",
     ]
     return pd.DataFrame(filas, columns=columnas)
 

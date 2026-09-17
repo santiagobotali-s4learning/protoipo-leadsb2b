@@ -25,7 +25,7 @@ from config import (
     MONDAY_BOARD_CUENTAS,
     N_EMPRESAS_ENRIQUECER,
     ROLES_CONTACTO,
-    SERPAPI_KEY,
+    SERPER_API_KEY,
     TAMANO_PAGINA,
     TODOS_LOS_ROLES,
 )
@@ -36,7 +36,13 @@ from cuentas import (
     perfil_desde_cuenta,
 )
 from denue import agrupar_por_empresa, buscar_denue, marcar_grupo_corporativo
-from enrichment import _dedup_contactos, buscar_contacto_por_rol, enriquecer_empresa, roles_a_buscar
+from enrichment import (
+    _dedup_contactos,
+    buscar_contacto_por_rol,
+    buscar_linkedin_de_persona,
+    enriquecer_empresa,
+    roles_a_buscar,
+)
 from hunter import (
     calcular_score_correo,
     hunter_buscar_email,
@@ -47,6 +53,7 @@ from hunter import (
 from monday import monday_correo_existe, monday_crear_contacto, monday_listar_usuarios
 from utils import (
     _gmail_compose_url,
+    _logo_data_uri,
     _texto,
     _valor_valido,
     dominio_de_empresa,
@@ -58,13 +65,35 @@ from utils import (
 
 st.set_page_config(
     page_title="Explorador DENUE",
-    page_icon=":material/storefront:",
+    page_icon="design/logo_s4.svg",
     layout="wide",
 )
+st.logo("design/logo_s4.svg", size="large")
+st.html("""<style>
+.stLogo { height: 6rem !important; width: auto !important; margin-top: 2rem !important; }
+[data-testid="stSidebarUserContent"] { display: flex; flex-direction: column; min-height: calc(100vh - 2rem); }
+.st-key-utel_logo_bottom { margin-top: auto; }
+</style>""")
+
+
+def _completar_linkedin(nombre, razon_social):
+    """Si hay un nombre de persona real pero no LinkedIn (típico de Hunter
+    Combined Enrichment/Domain Search, que no siempre lo traen), busca el
+    perfil por nombre + empresa — mismo patrón que buscar_contacto_por_rol,
+    pero partiendo de una persona ya identificada en vez de un rol genérico.
+    None si no hay nombre, o si la búsqueda falla o no encuentra nada con
+    certeza suficiente (ver LinkedInPersona en enrichment.py)."""
+    if not nombre:
+        return None
+    try:
+        resultado = buscar_linkedin_de_persona(nombre, razon_social, SERPER_API_KEY, ANTHROPIC_API_KEY)
+        return resultado.linkedin_url
+    except Exception:
+        return None
 
 
 @st.dialog("Confirmar exportación a Monday")
-def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_id):
+def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_nombre):
     st.write(f"¿Seguro que querés exportar a **{etiqueta}** ({cuenta}) a Monday?")
     col_si, col_no = st.columns(2)
     with col_si:
@@ -86,8 +115,15 @@ def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_id):
                         mismo_nombre = (
                             st.session_state["df_contactos"]["Cuenta asociada"] == fila["Cuenta asociada"]
                         )
+                        # Si todas las empresas de este lote eran nuevas, la columna
+                        # nace float64 (todo NaN) — pandas no deja escribir un id de
+                        # Monday (string) ahí sin ensanchar el dtype primero (confirmado
+                        # empíricamente: "Invalid value '...' for dtype 'float64'").
+                        st.session_state["df_contactos"]["Cuenta item id"] = (
+                            st.session_state["df_contactos"]["Cuenta item id"].astype(object)
+                        )
                         st.session_state["df_contactos"].loc[mismo_nombre, "Cuenta item id"] = cuenta_item_id
-                    monday_crear_contacto(fila, cuenta_item_id, responsable_id=responsable_id)
+                    monday_crear_contacto(fila, cuenta_item_id, responsable_nombre=responsable_nombre)
                     st.session_state["_monday_aviso"] = ("success", f"{etiqueta} exportado correctamente.")
                 st.session_state["df_contactos"].loc[idx, "Exportado a Monday"] = True
             except Exception as exc:
@@ -124,16 +160,16 @@ def _renderizar_tarjeta_contacto(idx, fila, usuarios_monday):
         with col_correo:
             if _valor_valido(fila["Correo"]):
                 st.link_button(
-                    "Enviar correo", _gmail_compose_url(fila["Correo"]),
-                    icon=":material/mail:", use_container_width=True,
+                    f"![]({_logo_data_uri('logos/mail.png')}) Enviar correo",
+                    _gmail_compose_url(fila["Correo"]), width="stretch",
                 )
             else:
                 st.caption("Sin correo")
         with col_linkedin:
             if _valor_valido(fila["Link de LinkedIn"]):
                 st.link_button(
-                    "Ver LinkedIn", fila["Link de LinkedIn"],
-                    icon=":material/open_in_new:", use_container_width=True,
+                    f"![]({_logo_data_uri('logos/linkedinlogo.png')}) Ver LinkedIn",
+                    fila["Link de LinkedIn"], width="stretch",
                 )
             else:
                 st.caption("Sin LinkedIn")
@@ -151,7 +187,7 @@ def _renderizar_tarjeta_contacto(idx, fila, usuarios_monday):
             col_resp, col_contactado, col_no_existe, col_exportar = st.columns([2, 1.3, 1.8, 1.8])
             with col_resp:
                 responsable_nombre = st.selectbox(
-                    "Responsable", options=[""] + list(usuarios_monday.keys()), key=f"responsable_{idx}",
+                    "Responsable", options=[""] + usuarios_monday, key=f"responsable_{idx}",
                 )
             with col_contactado:
                 contactado = st.checkbox(
@@ -171,7 +207,7 @@ def _renderizar_tarjeta_contacto(idx, fila, usuarios_monday):
                     icon=":material/cloud_upload:", use_container_width=True,
                 ):
                     dialog_exportar_monday(
-                        idx, etiqueta, fila["Cuenta asociada"], usuarios_monday.get(responsable_nombre)
+                        idx, etiqueta, fila["Cuenta asociada"], responsable_nombre
                     )
 
 
@@ -212,6 +248,10 @@ with st.sidebar:
         )
 
         buscar = st.form_submit_button("Buscar", icon=":material/search:")
+
+    with st.container(key="utel_logo_bottom"):
+        st.divider()
+        st.image("design/Logotipo_Utel-Negro.png", width=140)
 
 if buscar:
     st.session_state["ultima_busqueda"] = {
@@ -445,7 +485,7 @@ with tab_enriquecimiento:
     )
     st.caption(
         f"Prototipo: busca y analiza {_texto_cantidad} de \"Datos limpios\", para no "
-        "consumir de más las búsquedas de SerpAPI/Anthropic. Las empresas que ya existen "
+        "consumir de más las búsquedas de Serper/Anthropic. Las empresas que ya existen "
         "en Monday (sin convenio ni contacto exitoso) no se re-enriquecen — usan el perfil "
         "que ya está cargado en el board de Cuentas."
     )
@@ -457,8 +497,8 @@ with tab_enriquecimiento:
         "reemplazar al otro — mostralos juntos y priorizá con criterio."
     )
 
-    if not SERPAPI_KEY or not ANTHROPIC_API_KEY:
-        st.warning("Faltan SERPAPI_KEY y/o ANTHROPIC_API_KEY en el .env para usar esta pestaña.")
+    if not SERPER_API_KEY or not ANTHROPIC_API_KEY:
+        st.warning("Faltan SERPER_API_KEY y/o ANTHROPIC_API_KEY en el .env para usar esta pestaña.")
     elif df_etapa4.empty:
         st.info("No hay empresas en 'Datos limpios' para enriquecer todavía.")
     else:
@@ -473,7 +513,7 @@ with tab_enriquecimiento:
             # N_EMPRESAS_ENRIQUECER) — es intencional: el objetivo de esta funcionalidad
             # es justamente no perder oportunidades de búsqueda de contacto para cuentas
             # que ya existen en Monday pero todavía no están gestionadas. Como sí entran
-            # de lleno al paso "Verificar y buscar contactos" (Hunter/SerpAPI/Claude), un
+            # de lleno al paso "Verificar y buscar contactos" (Hunter/Serper/Claude), un
             # lote grande puede disparar muchas llamadas a esas APIs — se avisa con
             # st.warning en vez de st.caption a partir de 10 empresas (umbral arbitrario:
             # suficiente para no molestar en pruebas chicas, bajo para importar en serio).
@@ -485,7 +525,7 @@ with tab_enriquecimiento:
             if len(df_existe_etapa4) > UMBRAL_AVISO_COSTO:
                 st.warning(
                     _mensaje_existe + " Al no tener tope, esto puede disparar muchas "
-                    "llamadas a Hunter/SerpAPI/Claude en el paso 'Verificar y buscar "
+                    "llamadas a Hunter/Serper/Claude en el paso 'Verificar y buscar "
                     "contactos' más abajo."
                 )
             else:
@@ -501,7 +541,7 @@ with tab_enriquecimiento:
                             fila.Razon_social,
                             fila.Clase_actividad,
                             fila.Ubicacion,
-                            SERPAPI_KEY,
+                            SERPER_API_KEY,
                             ANTHROPIC_API_KEY,
                         )
                         resultados_nuevas.append(resultado.model_dump())
@@ -540,19 +580,19 @@ with tab_enriquecimiento:
 
                 # El sitio del DENUE puede estar vacío o desactualizado (dominio que ya
                 # no responde). Si no pasa el chequeo directo, se trata como si no
-                # existiera y se completa con el que encontró la búsqueda de SerpAPI
+                # existiera y se completa con el que encontró la búsqueda de Serper
                 # (o el de Monday, para cuentas existentes — viaja en la misma columna).
                 sitios_finales, fuentes_sitio = [], []
                 for _, fila_sitio in df_combinado.iterrows():
                     sitio_denue = str(fila_sitio.get("Sitio web") or "").strip()
-                    sitio_serpapi = str(fila_sitio.get("Sitio web (SerpAPI)") or "").strip()
+                    sitio_serper = str(fila_sitio.get("Sitio web (Serper)") or "").strip()
                     if sitio_denue and sitio_web_valido(sitio_denue):
                         sitios_finales.append(sitio_denue)
                         fuentes_sitio.append("DENUE")
-                    elif sitio_serpapi:
-                        sitios_finales.append(sitio_serpapi)
+                    elif sitio_serper:
+                        sitios_finales.append(sitio_serper)
                         fuentes_sitio.append(
-                            "SerpAPI/Monday (DENUE vacío)" if not sitio_denue else "SerpAPI/Monday (el del DENUE no responde)"
+                            "Serper/Monday (DENUE vacío)" if not sitio_denue else "Serper/Monday (el del DENUE no responde)"
                         )
                     else:
                         sitios_finales.append("")
@@ -607,7 +647,7 @@ with tab_enriquecimiento:
                     if rol_elegido == TODOS_LOS_ROLES:
                         st.caption(
                             "Busca los 4 roles para cada empresa — multiplica las búsquedas de "
-                            "SerpAPI/Anthropic por empresa. Usar con pocas empresas a la vez."
+                            "Serper/Anthropic por empresa. Usar con pocas empresas a la vez."
                         )
                 verificar = st.button("Verificar y buscar contactos", icon=":material/verified:")
 
@@ -636,7 +676,7 @@ with tab_enriquecimiento:
                                         st.write(f"⚠ {correo} — Combined Enrichment falló, sigo sin ese dato: {exc_combinado}")
                                 dominio = dominio_de_empresa(correo, fila["Sitio web"])
                                 score_final, confianza_final = calcular_score_correo(
-                                    verificacion["score"], dominio, fila["Razón social"], SERPAPI_KEY
+                                    verificacion["score"], dominio, fila["Razón social"], SERPER_API_KEY
                                 )
 
                                 # Sin persona vía Hunter (típico en correos institucionales
@@ -653,7 +693,7 @@ with tab_enriquecimiento:
                                     encontrados = []
                                     for terminos_rol in roles_seleccionados.values():
                                         resultado_rol = buscar_contacto_por_rol(
-                                            fila["Razón social"], terminos_rol, SERPAPI_KEY, ANTHROPIC_API_KEY
+                                            fila["Razón social"], terminos_rol, SERPER_API_KEY, ANTHROPIC_API_KEY
                                         )
                                         if resultado_rol.nombre:
                                             encontrados.append(resultado_rol)
@@ -664,11 +704,15 @@ with tab_enriquecimiento:
                                     nombre_contacto, cargo_contacto, linkedin_contacto = (
                                         persona["nombre"], persona["cargo"], persona["linkedin"]
                                     )
+                                    if nombre_contacto and not linkedin_contacto:
+                                        linkedin_contacto = _completar_linkedin(nombre_contacto, fila["Razón social"])
                                     fuente_contacto = "DENUE + Hunter"
                                 elif contacto_fallback:
                                     nombre_contacto, cargo_contacto, linkedin_contacto = (
                                         contacto_fallback.nombre, contacto_fallback.cargo, contacto_fallback.linkedin_url
                                     )
+                                    if nombre_contacto and not linkedin_contacto:
+                                        linkedin_contacto = _completar_linkedin(nombre_contacto, fila["Razón social"])
                                     fuente_contacto = "DENUE + Hunter + búsqueda web"
                                 elif correo_general:
                                     nombre_contacto = cargo_contacto = linkedin_contacto = None
@@ -683,41 +727,57 @@ with tab_enriquecimiento:
                                     estado_correo=verificacion["estado"], score_correo=score_final,
                                     confianza_correo=confianza_final, fuente=fuente_contacto,
                                     cuenta_item_id=fila["Cuenta_item_id"],
-                                    sector_empresa=fila["Actividad económica"],
+                                    sector_empresa=fila["Sector (Monday)"],
                                     personal_estimado_empresa=fila["Personal estimado"],
-                                    tamano_empresa=fila["Banda de tamaño"],
+                                    tamano_empresa=fila["Tamaño (Monday)"],
                                     sitio_web_empresa=fila["Sitio web"],
                                     correo_empresa=fila["Correo"],
+                                    grupo_empresarial=fila["Grupo corporativo probable"],
+                                    tipo_empresa=fila["Tipo"],
+                                    descripcion_empresa=fila["Resumen actividad"],
+                                    rfc_empresa=fila["RFC/NIT/RUC"],
                                 ))
 
                                 for contacto_alt in contactos_fallback:
                                     hallazgo_alt = hunter_buscar_email(dominio, contacto_alt.nombre, HUNTER_API_KEY)
                                     if hallazgo_alt and hallazgo_alt["email"] != correo:
+                                        linkedin_alt = contacto_alt.linkedin_url or _completar_linkedin(
+                                            contacto_alt.nombre, fila["Razón social"]
+                                        )
                                         filas_contactos.append(fila_contacto(
                                             fila["Razón social"], contacto_alt.nombre, hallazgo_alt["email"],
-                                            fila["Teléfono"], contacto_alt.cargo, contacto_alt.linkedin_url,
+                                            fila["Teléfono"], contacto_alt.cargo, linkedin_alt,
                                             es_principal=False, score_correo=hallazgo_alt["score"],
                                             fuente="Búsqueda por rol",
                                             sources="; ".join(hallazgo_alt["sources"]) if hallazgo_alt["sources"] else None,
                                             cuenta_item_id=fila["Cuenta_item_id"],
-                                            sector_empresa=fila["Actividad económica"],
+                                            sector_empresa=fila["Sector (Monday)"],
                                             personal_estimado_empresa=fila["Personal estimado"],
-                                            tamano_empresa=fila["Banda de tamaño"],
+                                            tamano_empresa=fila["Tamaño (Monday)"],
                                             sitio_web_empresa=fila["Sitio web"],
                                             correo_empresa=fila["Correo"],
+                                            grupo_empresarial=fila["Grupo corporativo probable"],
+                                            tipo_empresa=fila["Tipo"],
+                                            descripcion_empresa=fila["Resumen actividad"],
+                                            rfc_empresa=fila["RFC/NIT/RUC"],
                                         ))
 
                                 for otro in hunter_correos_del_dominio(dominio, HUNTER_API_KEY):
+                                    linkedin_otro = otro["linkedin"] or _completar_linkedin(otro["nombre"], fila["Razón social"])
                                     filas_contactos.append(fila_contacto(
                                         fila["Razón social"], otro["nombre"], otro["correo"], fila["Teléfono"],
-                                        otro["cargo"], otro["linkedin"], es_principal=False,
+                                        otro["cargo"], linkedin_otro, es_principal=False,
                                         score_correo=otro["confianza"], fuente="Hunter domain search",
                                         cuenta_item_id=fila["Cuenta_item_id"],
-                                        sector_empresa=fila["Actividad económica"],
+                                        sector_empresa=fila["Sector (Monday)"],
                                         personal_estimado_empresa=fila["Personal estimado"],
-                                        tamano_empresa=fila["Banda de tamaño"],
+                                        tamano_empresa=fila["Tamaño (Monday)"],
                                         sitio_web_empresa=fila["Sitio web"],
                                         correo_empresa=fila["Correo"],
+                                        grupo_empresarial=fila["Grupo corporativo probable"],
+                                        tipo_empresa=fila["Tipo"],
+                                        descripcion_empresa=fila["Resumen actividad"],
+                                        rfc_empresa=fila["RFC/NIT/RUC"],
                                     ))
 
                                 if correo_general:
@@ -739,7 +799,7 @@ with tab_enriquecimiento:
                                 encontrados = []
                                 for terminos_rol in roles_seleccionados.values():
                                     resultado_rol = buscar_contacto_por_rol(
-                                        razon, terminos_rol, SERPAPI_KEY, ANTHROPIC_API_KEY
+                                        razon, terminos_rol, SERPER_API_KEY, ANTHROPIC_API_KEY
                                     )
                                     if resultado_rol.nombre:
                                         encontrados.append(resultado_rol)
@@ -764,7 +824,7 @@ with tab_enriquecimiento:
                                             correo_adivinado = hallazgo["email"]
                                             estado_correo = verificacion["estado"]
                                             score_final, confianza_final = calcular_score_correo(
-                                                verificacion["score"], dominio, razon, SERPAPI_KEY
+                                                verificacion["score"], dominio, razon, SERPER_API_KEY
                                             )
                                             if hallazgo["sources"]:
                                                 fuentes_publicas = "; ".join(hallazgo["sources"])
@@ -778,18 +838,23 @@ with tab_enriquecimiento:
                                         key=lambda i: candidatos[i][3] if candidatos[i][3] is not None else -1,
                                     )
                                     for i, (contacto, correo_adivinado, estado_correo, score_final, confianza_final, fuentes_publicas) in enumerate(candidatos):
+                                        linkedin_contacto_b = contacto.linkedin_url or _completar_linkedin(contacto.nombre, razon)
                                         filas_contactos.append(fila_contacto(
                                             razon, contacto.nombre, correo_adivinado, fila["Teléfono"],
-                                            contacto.cargo, contacto.linkedin_url, es_principal=(i == indice_principal),
+                                            contacto.cargo, linkedin_contacto_b, es_principal=(i == indice_principal),
                                             estado_correo=estado_correo, score_correo=score_final,
                                             confianza_correo=confianza_final, fuente="Búsqueda web + Hunter",
                                             sources=fuentes_publicas,
                                             cuenta_item_id=fila["Cuenta_item_id"],
-                                            sector_empresa=fila["Actividad económica"],
+                                            sector_empresa=fila["Sector (Monday)"],
                                             personal_estimado_empresa=fila["Personal estimado"],
-                                            tamano_empresa=fila["Banda de tamaño"],
+                                            tamano_empresa=fila["Tamaño (Monday)"],
                                             sitio_web_empresa=fila["Sitio web"],
                                             correo_empresa=fila["Correo"],
+                                            grupo_empresarial=fila["Grupo corporativo probable"],
+                                            tipo_empresa=fila["Tipo"],
+                                            descripcion_empresa=fila["Resumen actividad"],
+                                            rfc_empresa=fila["RFC/NIT/RUC"],
                                         ))
                                     st.write(f"✓ {razon} — " + ", ".join(c.nombre for c, *_ in candidatos))
                                 else:
@@ -797,16 +862,21 @@ with tab_enriquecimiento:
 
                                 if dominio:
                                     for otro in hunter_correos_del_dominio(dominio, HUNTER_API_KEY):
+                                        linkedin_otro = otro["linkedin"] or _completar_linkedin(otro["nombre"], razon)
                                         filas_contactos.append(fila_contacto(
                                             razon, otro["nombre"], otro["correo"], fila["Teléfono"],
-                                            otro["cargo"], otro["linkedin"], es_principal=False,
+                                            otro["cargo"], linkedin_otro, es_principal=False,
                                             score_correo=otro["confianza"], fuente="Hunter domain search",
                                             cuenta_item_id=fila["Cuenta_item_id"],
-                                            sector_empresa=fila["Actividad económica"],
+                                            sector_empresa=fila["Sector (Monday)"],
                                             personal_estimado_empresa=fila["Personal estimado"],
-                                            tamano_empresa=fila["Banda de tamaño"],
+                                            tamano_empresa=fila["Tamaño (Monday)"],
                                             sitio_web_empresa=fila["Sitio web"],
                                             correo_empresa=fila["Correo"],
+                                            grupo_empresarial=fila["Grupo corporativo probable"],
+                                            tipo_empresa=fila["Tipo"],
+                                            descripcion_empresa=fila["Resumen actividad"],
+                                            rfc_empresa=fila["RFC/NIT/RUC"],
                                         ))
                             except Exception as exc:
                                 st.write(f"✗ {razon} — error: {exc}")
@@ -841,7 +911,9 @@ with tab_enriquecimiento:
                     )
 
 with tab_monday:
-    st.subheader("Gestión y exportación a Monday")
+    col_logo_monday, col_subheader_monday = st.columns([0.06, 0.94], vertical_alignment="center")
+    col_logo_monday.image("logos/monday.png", width=36)
+    col_subheader_monday.subheader("Gestión y exportación a Monday")
 
     if "_monday_aviso" in st.session_state:
         _tipo_aviso, _mensaje_aviso = st.session_state.pop("_monday_aviso")
@@ -883,5 +955,12 @@ with tab_monday:
         if subset.empty:
             st.caption("No hay contactos en esta categoría.")
         else:
-            for idx, fila in subset.iterrows():
-                _renderizar_tarjeta_contacto(idx, fila, usuarios_monday)
+            # Agrupado por empresa (orden alfabético, colapsado por defecto) para que
+            # muchos contactos de distintas cuentas no se mezclen a simple vista.
+            empresas_subset = sorted(subset["Cuenta asociada"].unique(), key=lambda e: str(e).lower())
+            for empresa in empresas_subset:
+                grupo = subset[subset["Cuenta asociada"] == empresa]
+                n = len(grupo)
+                with st.expander(f"{empresa} ({n} contacto{'s' if n != 1 else ''})", expanded=False):
+                    for idx, fila in grupo.iterrows():
+                        _renderizar_tarjeta_contacto(idx, fila, usuarios_monday)

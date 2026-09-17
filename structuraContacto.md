@@ -12,12 +12,15 @@ tablero de cuentas, y creación de la columna `board_relation` en Tasks 4/5):
   cargo (ninguna es un "status" con labels, ni un date-picker, ni un
   people-picker real). `monday_crear_contacto` (`monday.py`) escribe
   siempre strings planos para estos campos — "Responsable" en particular
-  escribe el ID numérico de Monday como texto plano (no resuelve a nombre)
-  porque no hay people-picker real donde resolverlo; "Estado" tampoco tiene
-  labels configurados del lado de Monday (`settings_str` vacío), así que
-  nada valida que el string escrito coincida con uno de los 8 estados
-  esperados — eso queda a cargo de este código (ver `ESTADOS_CONTACTO_EXITOSO`
-  en `config.py`).
+  escribe el **nombre** del usuario de Monday como texto plano (antes se
+  escribía el ID numérico, pero como no hay people-picker real que lo
+  resuelva a nombre del lado de Monday, quedaba ilegible en el board; el
+  selectbox de la app sigue restringiendo la selección a usuarios reales
+  vía `monday_listar_usuarios`, solo cambió qué valor se persiste); "Estado"
+  tampoco tiene labels configurados del lado de Monday (`settings_str`
+  vacío), así que nada valida que el string escrito coincida con uno de los
+  8 estados esperados — eso queda a cargo de este código (ver
+  `ESTADOS_CONTACTO_EXITOSO` en `config.py`).
 - La columna **"Cuenta asociada"** de esta tabla corresponde en el board
   real a **`board_relation_mm725nna`** ("Cuenta vinculada"), un
   `board_relation` real creado *después* del Task 1 para vincular

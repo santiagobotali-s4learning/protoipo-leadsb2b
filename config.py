@@ -13,13 +13,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 API_KEY = os.getenv("DENUE_API_KEY")
-SERPAPI_KEY = os.getenv("SERPAPI_KEY")
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY")
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 
 BASE_URL = "https://www.inegi.org.mx/app/api/denue/v1/consulta/BuscarAreaActEstr"
-SERPAPI_URL = "https://serpapi.com/search.json"
+SERPER_URL = "https://google.serper.dev/search"
 HUNTER_URL = "https://api.hunter.io/v2"
 MONDAY_URL = "https://api.monday.com/v2"
 # Board "Contactos" (workspace "Pruebas IA", id 17441169) — IDs de columna
@@ -49,24 +49,47 @@ MONDAY_COLUMNAS_CONTACTO = {
     "Responsable": "text_mm71erf3",
 }
 # Board "Cuentas" (tablero real de prueba, workspace "Pruebas IA", id
-# 17441169) — IDs de columna confirmados empíricamente contra la API (ver
-# Task 1 del plan de tablero de cuentas). "Convenios" apunta a la columna
-# "Convenio vinculado", creada después de Task 1 como board_relation real
-# (Cuentas -> board "Convenios", id 18430363328, también dentro de Pruebas
-# IA) — la columna de texto original "Convenio asociado" (text_mm71gsya)
-# queda sin usar por este código. Ver la nota al inicio de
-# structuraCuentas.md para el detalle del board original 100% de texto.
+# 17441169) — IDs de columna confirmados empíricamente contra la API
+# (re-confirmados 2026-09-16 tras ampliar el board a las 29 columnas del
+# schema real de producción, ver docs/superpowers/... y
+# proyecto_schema_cuentas_29_campos en memoria). "Convenios" apunta a la
+# columna "Convenio vinculado", creada después de Task 1 como board_relation
+# real (Cuentas -> board "Convenios", id 18430363328, también dentro de
+# Pruebas IA) — la columna de texto original "Convenio asociado"
+# (text_mm71gsya) queda sin usar por este código. TODAS las demás columnas
+# son type "text" simple, igual que en el board original — ver la nota al
+# inicio de structuraCuentas.md. Las columnas del Excel de producción que
+# no están acá (Validación de duplicado, Coincidencia en otra hoja,
+# Revisión contextual IA, Motivo de la revisión IA) se dejaron sin mapear a
+# propósito: su semántica exacta no está definida todavía, no se automatizan.
 MONDAY_BOARD_CUENTAS = "18430360623"
 MONDAY_COLUMNAS_CUENTAS = {
     "Convenios": "board_relation_mm72x2xb",
+    "RFC/NIT/RUC": "text_mm71st8a",
+    "Pertenece a algun grupo empresarial": "text_mm71jgjh",
+    "Grupo Empresarial": "text_mm71qs7b",
+    "Contacto asociado": "text_mm71jesp",
+    "Tipo": "text_mm7147hr",
+    "Eventos": "text_mm71jjvy",
+    "Empleabilidad": "text_mm7170fg",
+    "Academico": "text_mm71e6m4",
+    "Relacionamiento y ventas": "text_mm71ta2q",
+    "Categoria": "text_mm71f235",
     "Sector": "text_mm71vga2",
     "Cantidad de empleados": "text_mm714996",
     "Tamaño": "text_mm71ce60",
-    "País": "text_mm71fen5",
-    "Página web": "text_mm71tbvy",
+    "Descripcion": "text_mm71thgp",
     "E-Mail": "text_mm71ksmd",
     "Teléfono": "text_mm718nrr",
+    "Página web": "text_mm71tbvy",
+    "País": "text_mm71fen5",
+    "Responsable": "text_mm71rr9v",
     "Fecha de inicio": "text_mm718xd5",
+    "Convenio asociado": "text_mm71gsya",
+    "Oportunidad asociada": "text_mm71zrvg",
+    "Plan ESG": "text_mm714x4m",
+    "Documento ESG": "text_mm71hzam",
+    "Co-abridor": "text_mm71xm8t",
 }
 # Estados de MONDAY_COLUMNAS_CONTACTO["Estado"] que cuentan como gestión
 # avanzada/exitosa — una cuenta con al menos un contacto en uno de estos
@@ -82,7 +105,7 @@ ENTIDAD_TODOS = "00"
 ESTRATO_TODOS = "0"
 TAMANO_PAGINA = 5000
 # Prototipo: solo se enriquece(n) la(s) N empresa(s) de mayor personal estimado,
-# para no consumir de más las búsquedas de SerpAPI/Anthropic — bajado a 1 para
+# para no consumir de más las búsquedas de Serper/Anthropic — bajado a 1 para
 # poder probar la opción "Todos los roles" (multiplica las búsquedas por
 # empresa) sin que el costo se dispare mientras se sigue probando.
 N_EMPRESAS_ENRIQUECER = 1
@@ -130,16 +153,16 @@ COLUMN_CONFIG = {
 
 COLUMNAS_ENRIQUECIMIENTO = {
     "linkedin_url": "LinkedIn",
-    "sitio_web": "Sitio web (SerpAPI)",
+    "sitio_web": "Sitio web (Serper)",
     "empleados_linkedin": "Empleados (LinkedIn/web)",
     "actividad_reciente": "Actividad reciente",
     "resumen_actividad": "Resumen actividad",
     "senales_riesgo": "Señal de riesgo",
     "resumen_riesgo": "Resumen riesgo",
-    "contacto_rrhh": "Contacto RRHH",
-    "contacto_rrhh_url": "LinkedIn del contacto",
     "confianza_coincidencia": "Confianza (coincide con la empresa)",
     "evidencia": "Evidencia",
+    "tipo_empresa": "Tipo",
+    "rfc": "RFC/NIT/RUC",
 }
 
 # Columnas finales para la etapa de "datos limpios": las que sirven para
@@ -155,6 +178,8 @@ COLUMNAS_LIMPIAS = {
     "Sitio_internet": "Sitio web",
     "Clase_actividad": "Actividad económica",
     "CLASE_ACTIVIDAD_ID": "Código SCIAN",
+    "Sector_monday": "Sector (Monday)",
+    "Tamano_monday": "Tamaño (Monday)",
     "Ubicacion": "Localidad, municipio, estado",
     "Fecha_Alta": "Fecha de alta en DENUE",
     "Grupo_corporativo_probable": "Grupo corporativo probable",
@@ -165,6 +190,67 @@ BANDAS_TOTALES = [
     (250, "250 a 999"),
     (50, "50 a 249"),
     (0, "Hasta 49"),
+]
+
+# Tamaño para la columna 'Tamano' del board de Cuentas (Micro/Pequeña/
+# Mediana/Grande) — cortes fijos (no por sector, a diferencia de los
+# oficiales SE/INEGI) definidos por el usuario. (umbral, etiqueta): personal
+# <= umbral cae en esa etiqueta; por encima del último, "Grande".
+TAMANOS_MONDAY = [
+    (10, "Micro"),
+    (50, "Pequeña"),
+    (250, "Mediana"),
+]
+
+# Sector SCIAN de 2 dígitos (ver catalogos.SECTORES_SCIAN) -> uno de los 25
+# sectores del dropdown 'Sector' del board de Cuentas. Mapeo aproximado —
+# varios sectores SCIAN combinan actividades que el dropdown separa (ver
+# SECTOR_MONDAY_PALABRAS_CLAVE para los casos que sí se distinguen).
+# "Servicios" es el catch-all para sectores SCIAN sin una categoría más
+# específica en el dropdown (electricidad/agua/gas, corporativos, apoyo a
+# negocios, otros servicios).
+SECTOR_MONDAY_POR_SCIAN = {
+    "11": "Agricultura",
+    "21": "Minería",
+    "22": "Servicios",
+    "23": "Construcción",
+    "31": "Manufactura/ Transformación de productos",
+    "32": "Manufactura/ Transformación de productos",
+    "33": "Manufactura/ Transformación de productos",
+    "43": "Comercio",
+    "46": "Comercio",
+    "48": "Transporte",
+    "49": "Transporte",
+    "51": "Tecnología",
+    "52": "Financiero",
+    "53": "Inmobiliaria",
+    "54": "Profesional",
+    "55": "Servicios",
+    "56": "Servicios",
+    "61": "Educativo",
+    "62": "Salud",
+    "71": "Entretenimiento",
+    "72": "Turismo",
+    "81": "Servicios",
+    "93": "Gobierno",
+}
+
+# Se prueban ANTES del mapeo por SCIAN, sobre el texto de Clase_actividad en
+# minúsculas — capturan sub-sectores que el dropdown de Monday separa pero
+# el SCIAN de 2 dígitos no distingue (ej. "Automotriz" es una porción de
+# "31-33 Industrias manufactureras"). La primera clave que matchea gana.
+SECTOR_MONDAY_PALABRAS_CLAVE = [
+    (("automotriz", "automotor", "autopartes", "automóvil", "automovil", "vehículos automotores", "vehiculos automotores"), "Automotriz"),
+    (("aliment", "bebida", "lácte", "lacte", "cárnic", "carnic", "panificación", "panificacion"), "Alimentario"),
+    (("telecomunicaciones", "telefonía", "telefonia", "acceso a internet", "mensajería", "mensajeria"), "Correos / Telecomunicaciones"),
+    (("software", "informática", "informatica", "procesamiento electrónico de información", "procesamiento electronico de informacion"), "Tecnología"),
+    (("laboratorio", "farmacéutic", "farmaceutic"), "Laboratorios"),
+    (("pesca", "acuicultura", "acuícola", "acuicola"), "Pesca"),
+    (("silvicultura", "forestal"), "Silvicultura"),
+    (("fundación", "fundacion", "asociación civil", "asociacion civil"), "Fundación"),
+    (("museo", "teatro", "biblioteca"), "Cultural"),
+    (("incubadora", "aceleradora"), "Emprendimiento"),
+    (("hotel", "agencia de viajes", "turístic", "turistic"), "Turismo"),
 ]
 
 # Local-parts típicos de un buzón institucional/funcional (no una persona) —
@@ -204,6 +290,7 @@ COLUMNAS_CONTACTO_INTERNAS = [
     "Es principal", "Estado del correo", "Score del correo", "Confianza del correo",
     "Fuente", "Fuentes del correo", "Cuenta item id", "Sector empresa",
     "Personal estimado empresa", "Tamaño empresa", "Sitio web empresa", "Correo empresa",
+    "Grupo empresarial", "Tipo empresa", "Descripcion empresa", "RFC empresa",
 ]
 # Marcado manual en el panel de gestión — no se envía a Monday tal cual, pilotea
 # si/cómo se exporta cada fila.

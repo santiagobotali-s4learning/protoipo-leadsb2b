@@ -3,6 +3,7 @@ Helpers genéricos compartidos entre los módulos de integración y la UI:
 parsing de dominios/teléfonos, validación de valores "vacíos" al estilo
 pandas, y armado de filas con el esquema del board de Contacto en Monday.
 """
+import base64
 import re
 from datetime import date
 from urllib.parse import quote, urlparse
@@ -84,6 +85,7 @@ def fila_contacto(
     estado_correo=None, score_correo=None, confianza_correo=None, fuente=None, sources=None,
     cuenta_item_id=None, sector_empresa=None, personal_estimado_empresa=None,
     tamano_empresa=None, sitio_web_empresa=None, correo_empresa=None,
+    grupo_empresarial=None, tipo_empresa=None, descripcion_empresa=None, rfc_empresa=None,
 ):
     """Arma una fila de contacto con el esquema del board de Monday (ver
     contacto.md) + columnas propias de diagnóstico al final. Las columnas
@@ -116,6 +118,10 @@ def fila_contacto(
         "Tamaño empresa": tamano_empresa,
         "Sitio web empresa": sitio_web_empresa,
         "Correo empresa": correo_empresa,
+        "Grupo empresarial": grupo_empresarial,
+        "Tipo empresa": tipo_empresa,
+        "Descripcion empresa": descripcion_empresa,
+        "RFC empresa": rfc_empresa,
     }
 
 
@@ -129,6 +135,18 @@ def _telefono_mx(telefono):
     if not digitos.startswith("52"):
         digitos = f"52{digitos}"
     return f"+{digitos}" if len(digitos) >= 12 else None
+
+
+@st.cache_data(show_spinner=False)
+def _logo_data_uri(ruta_png):
+    """Data-URI de un logo PNG local, para embeberlo como ![](...) en el
+    label de un st.link_button (soportado — ver docstring de link_button:
+    'Images display like icons, with a max height equal to the font
+    height'). Un data-URI, a diferencia de una ruta relativa, renderiza
+    igual sin depender de cómo Streamlit sirva archivos estáticos."""
+    with open(ruta_png, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+    return f"data:image/png;base64,{b64}"
 
 
 def _gmail_compose_url(correo):

@@ -1,13 +1,13 @@
 """
 Integración con Hunter.io: verificación y búsqueda de correos, y una
-corroboración cruzada con SerpAPI (vía enrichment.buscar_serpapi) para
+corroboración cruzada con Serper.dev (vía enrichment.buscar_serper) para
 puntuar la confianza del correo final.
 """
 import requests
 import streamlit as st
 
 from config import HUNTER_URL
-from enrichment import buscar_serpapi
+from enrichment import buscar_serper
 
 
 def _hunter_data(response):
@@ -118,23 +118,23 @@ def hunter_correos_del_dominio(dominio, api_key, limite=5):
     ]
 
 
-def verificar_dominio_legitimo(dominio, serpapi_key):
+def verificar_dominio_legitimo(dominio, serper_api_key):
     """Corrobora vía web que el dominio tiene presencia real (no un dominio
     inventado o mal adivinado). No corrobora el correo exacto: probamos que
     buscar la dirección literal casi nunca encuentra nada (son correos
     administrativos, no públicos) — el dominio sí se puede verificar."""
     if not dominio:
         return {"presencia_web": False, "resultados": []}
-    resultados = buscar_serpapi(f"site:{dominio}", serpapi_key)
+    resultados = buscar_serper(f"site:{dominio}", serper_api_key)
     return {"presencia_web": len(resultados) > 0, "resultados": resultados}
 
 
-def calcular_score_correo(score_hunter, dominio, razon_social, serpapi_key):
+def calcular_score_correo(score_hunter, dominio, razon_social, serper_api_key):
     """Combina el score técnico de Hunter (servidor de correo real) con una
     corroboración web de que el dominio pertenece efectivamente a la empresa,
     y clasifica el resultado según un umbral."""
     score = score_hunter or 0
-    verificacion = verificar_dominio_legitimo(dominio, serpapi_key)
+    verificacion = verificar_dominio_legitimo(dominio, serper_api_key)
     if verificacion["presencia_web"]:
         score = min(100, score + 15)
         texto = " ".join(
