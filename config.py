@@ -23,83 +23,82 @@ SERPER_URL = "https://google.serper.dev/search"
 HUNTER_URL = "https://api.hunter.io/v2"
 MONDAY_URL = "https://api.monday.com/v2"
 # Board "Contactos" (workspace "Pruebas IA", id 17441169) — IDs de columna
-# reales confirmados empíricamente contra la API (ver Task 1 del plan de
-# tablero de cuentas). OJO: en este board TODAS las columnas de texto
-# originales (incluida "Estado") son de type "text" simple, sin labels
-# configurados del lado de Monday — ver la nota al inicio de
-# structuraContacto.md.
-# "Cuenta asociada" apunta a la columna "Cuenta vinculada", creada después
-# de Task 1 como board_relation real (Contactos -> Cuentas) porque el board
-# de prueba no traía ninguna columna de vínculo nativo — la columna de texto
-# original "Cuenta asociada" (text_mm71b8fe) queda sin usar por este código
-# (ver también la nota al inicio de structuraContacto.md).
+# re-confirmados empíricamente contra la API el 2026-09-22, tras un cambio
+# de esquema en Monday: el board dejó de tener columnas "text" simples y
+# pasó a tipos reales (email/phone/link/date/status/people/board_relation).
+# Cada tipo requiere un shape de JSON distinto en column_values (verificado
+# contra la doc oficial de Monday y con un create_item + lectura real de
+# prueba, borrado después) — ver monday_crear_contacto() en monday.py.
+# "Cuenta asociada" sigue siendo la misma columna board_relation real
+# (Contactos -> Cuentas), sin cambios.
 MONDAY_BOARD_CONTACTO = "18430360621"
 MONDAY_COLUMNAS_CONTACTO = {
     "Cuenta asociada": "board_relation_mm725nna",
-    "Correo": "text_mm717z2r",
-    "Teléfono (empresa)": "text_mm714vte",
+    "Correo": "email_mm7d3zqa",
+    "Teléfono (empresa)": "phone_mm7d71wd",
     "Extensión": "text_mm71vz61",
     "País": "text_mm7173en",
-    "Nivel de cargo": "text_mm71gzey",
+    "Nivel de cargo": "color_mm7dp4ay",
     "Nombre de cargo": "text_mm715hwe",
-    "Link de LinkedIn": "text_mm71cj9k",
-    "Rol en la decisión": "text_mm718qtq",
-    "Estado": "text_mm719jdf",
-    "Fecha de inicio": "text_mm71n8qa",
-    "Responsable": "text_mm71erf3",
+    "Link de LinkedIn": "link_mm7dw301",
+    "Rol en la decisión": "color_mm7dcr52",
+    "Estado": "color_mm7dg76t",
+    "Fecha de inicio": "date_mm7dcry0",
+    "Responsable": "multiple_person_mm7datgq",
 }
 # Board "Cuentas" (tablero real de prueba, workspace "Pruebas IA", id
-# 17441169) — IDs de columna confirmados empíricamente contra la API
-# (re-confirmados 2026-09-16 tras ampliar el board a las 29 columnas del
-# schema real de producción, ver docs/superpowers/... y
-# proyecto_schema_cuentas_29_campos en memoria). "Convenios" apunta a la
-# columna "Convenio vinculado", creada después de Task 1 como board_relation
-# real (Cuentas -> board "Convenios", id 18430363328, también dentro de
-# Pruebas IA) — la columna de texto original "Convenio asociado"
-# (text_mm71gsya) queda sin usar por este código. TODAS las demás columnas
-# son type "text" simple, igual que en el board original — ver la nota al
-# inicio de structuraCuentas.md. Las columnas del Excel de producción que
-# no están acá (Validación de duplicado, Coincidencia en otra hoja,
-# Revisión contextual IA, Motivo de la revisión IA) se dejaron sin mapear a
-# propósito: su semántica exacta no está definida todavía, no se automatizan.
+# 17441169) — IDs de columna re-confirmados empíricamente contra la API el
+# 2026-09-22, mismo cambio de esquema que el board de Contacto: columnas de
+# texto simple pasaron a tipos reales. "Categoria" y "Tamaño" ahora son
+# columnas fórmula, calculadas por Monday (a partir de los 4 checkboxes y
+# de "Cantidad de empleados" respectivamente) — el código NUNCA debe
+# escribirlas, solo puede leerlas. "Convenio asociado" es ahora la columna
+# board_relation real hacia el board "Convenios" (18430363328) — antes
+# vivía bajo la clave "Convenios"; se renombró para que coincida con el
+# título real en Monday. "Grupo Empresarial", "Contacto asociado",
+# "Oportunidad asociada", "Responsable", "Plan ESG", "Documento ESG" y
+# "Co-abridor" son ahora columnas tipadas reales (board_relation/people/
+# status/file/dropdown) pero siguen sin automatizarse — decisión explícita
+# de no automatizar (ver proyecto_schema_cuentas_29_campos en memoria);
+# quedan mapeadas por si hace falta leerlas, pero monday_crear_cuenta() no
+# les escribe nada.
 MONDAY_BOARD_CUENTAS = "18430360623"
 MONDAY_COLUMNAS_CUENTAS = {
-    "Convenios": "board_relation_mm72x2xb",
+    "Convenio asociado": "board_relation_mm7dxbap",
     "RFC/NIT/RUC": "text_mm71st8a",
-    "Pertenece a algun grupo empresarial": "text_mm71jgjh",
-    "Grupo Empresarial": "text_mm71qs7b",
-    "Contacto asociado": "text_mm71jesp",
-    "Tipo": "text_mm7147hr",
-    "Eventos": "text_mm71jjvy",
-    "Empleabilidad": "text_mm7170fg",
-    "Academico": "text_mm71e6m4",
-    "Relacionamiento y ventas": "text_mm71ta2q",
-    "Categoria": "text_mm71f235",
-    "Sector": "text_mm71vga2",
+    "Pertenece a algun grupo empresarial": "color_mm7dx7dg",
+    "Grupo Empresarial": "board_relation_mm7ds0ae",
+    "Contacto asociado": "board_relation_mm7dk68c",
+    "Tipo": "color_mm7dzm8c",
+    "Eventos": "boolean_mm7da3yj",
+    "Empleabilidad": "boolean_mm7dsvgz",
+    "Academico": "boolean_mm7dvs2d",
+    "Relacionamiento y ventas": "boolean_mm7dhjs6",
+    "Categoria": "formula_mm7dxzva",
+    "Sector": "color_mm7dqw42",
     "Cantidad de empleados": "text_mm714996",
-    "Tamaño": "text_mm71ce60",
+    "Tamaño": "formula_mm7dj04x",
     "Descripcion": "text_mm71thgp",
-    "E-Mail": "text_mm71ksmd",
-    "Teléfono": "text_mm718nrr",
-    "Página web": "text_mm71tbvy",
+    "E-Mail": "email_mm7daqpm",
+    "Teléfono": "phone_mm7dr75t",
+    "Página web": "link_mm7d75bp",
     "País": "text_mm71fen5",
-    "Responsable": "text_mm71rr9v",
-    "Fecha de inicio": "text_mm718xd5",
-    "Convenio asociado": "text_mm71gsya",
-    "Oportunidad asociada": "text_mm71zrvg",
-    "Plan ESG": "text_mm714x4m",
-    "Documento ESG": "text_mm71hzam",
-    "Co-abridor": "text_mm71xm8t",
+    "Responsable": "multiple_person_mm7d5v02",
+    "Fecha de inicio": "date_mm7dbcyt",
+    "Oportunidad asociada": "board_relation_mm7d2h1c",
+    "Plan ESG": "color_mm7dynp6",
+    "Documento ESG": "file_mm7dyde7",
+    "Co-abridor": "dropdown_mm7d5758",
 }
 # Estados de MONDAY_COLUMNAS_CONTACTO["Estado"] que cuentan como gestión
 # avanzada/exitosa — una cuenta con al menos un contacto en uno de estos
-# estados no necesita más contactos nuevos (ver spec, sección 6).
-# OJO: "Estado" es una columna type "text" simple, sin labels configurados
-# del lado de Monday (settings_str vacío) — no hay validación de que el
-# valor escrito coincida con uno de estos 8 estados, queda a cargo del
-# código que escribe/lee esta columna (ver la nota al inicio de
-# structuraContacto.md).
-ESTADOS_CONTACTO_EXITOSO = {"Contactado", "Convenio firmado"}
+# estados no necesita más contactos nuevos (ver spec, sección 6). "Estado"
+# es ahora una columna status real con labels fijos (Contactado, Nuevo, En
+# gestion, No contactado, No interesado, No valido, Inactivo) — el label
+# "Convenio firmado" que usaba esta constante antes ya no existe en el
+# board real; decisión explícita del usuario (2026-09-22): solo
+# "Contactado" cuenta como gestión exitosa por ahora.
+ESTADOS_CONTACTO_EXITOSO = {"Contactado"}
 MODELO_ENRIQUECIMIENTO = "claude-haiku-4-5"
 ENTIDAD_TODOS = "00"
 ESTRATO_TODOS = "0"
@@ -208,20 +207,23 @@ TAMANOS_MONDAY = [
 # SECTOR_MONDAY_PALABRAS_CLAVE para los casos que sí se distinguen).
 # "Servicios" es el catch-all para sectores SCIAN sin una categoría más
 # específica en el dropdown (electricidad/agua/gas, corporativos, apoyo a
-# negocios, otros servicios).
+# negocios, otros servicios). "Sector" es una columna status real en
+# Monday, y sus labels reales vienen SIN acentos (confirmado empíricamente
+# 2026-09-22) — estos valores deben matchear exacto o Monday crea un label
+# nuevo duplicado en vez de usar el existente.
 SECTOR_MONDAY_POR_SCIAN = {
     "11": "Agricultura",
-    "21": "Minería",
+    "21": "Mineria",
     "22": "Servicios",
-    "23": "Construcción",
-    "31": "Manufactura/ Transformación de productos",
-    "32": "Manufactura/ Transformación de productos",
-    "33": "Manufactura/ Transformación de productos",
+    "23": "Construccion",
+    "31": "Manufactura/ Transformacion de productos",
+    "32": "Manufactura/ Transformacion de productos",
+    "33": "Manufactura/ Transformacion de productos",
     "43": "Comercio",
     "46": "Comercio",
     "48": "Transporte",
     "49": "Transporte",
-    "51": "Tecnología",
+    "51": "Tecnologia",
     "52": "Financiero",
     "53": "Inmobiliaria",
     "54": "Profesional",
@@ -243,11 +245,11 @@ SECTOR_MONDAY_PALABRAS_CLAVE = [
     (("automotriz", "automotor", "autopartes", "automóvil", "automovil", "vehículos automotores", "vehiculos automotores"), "Automotriz"),
     (("aliment", "bebida", "lácte", "lacte", "cárnic", "carnic", "panificación", "panificacion"), "Alimentario"),
     (("telecomunicaciones", "telefonía", "telefonia", "acceso a internet", "mensajería", "mensajeria"), "Correos / Telecomunicaciones"),
-    (("software", "informática", "informatica", "procesamiento electrónico de información", "procesamiento electronico de informacion"), "Tecnología"),
+    (("software", "informática", "informatica", "procesamiento electrónico de información", "procesamiento electronico de informacion"), "Tecnologia"),
     (("laboratorio", "farmacéutic", "farmaceutic"), "Laboratorios"),
     (("pesca", "acuicultura", "acuícola", "acuicola"), "Pesca"),
     (("silvicultura", "forestal"), "Silvicultura"),
-    (("fundación", "fundacion", "asociación civil", "asociacion civil"), "Fundación"),
+    (("fundación", "fundacion", "asociación civil", "asociacion civil"), "Fundacion"),
     (("museo", "teatro", "biblioteca"), "Cultural"),
     (("incubadora", "aceleradora"), "Emprendimiento"),
     (("hotel", "agencia de viajes", "turístic", "turistic"), "Turismo"),
@@ -266,14 +268,20 @@ LOCAL_PARTS_CORREO_GENERAL = {
 # Clasificación de "Nombre de cargo" (texto libre) a los 4 niveles fijos del
 # board de Contacto en Monday — orden de mayor a menor jerarquía, la primera
 # clave que matchea gana (evita que "director" pise a "ceo" o viceversa).
+# "Nivel de cargo" es una columna status real (re-confirmado 2026-09-22) —
+# estos textos deben matchear EXACTO los labels que están hoy cargados en
+# Monday, sin acentos. El 4to label tiene una comilla suelta pegada al
+# final (typo de carga de datos del lado de Monday, confirmado empíricamente
+# contra la API) — se deja así a pedido explícito del usuario, en vez de
+# corregir el label en Monday.
 NIVELES_CARGO = [
     ("CEO, Presidente y/o similares",
      ["ceo", "cfo", "coo", "cto", "chief", "president", "presidente", "fundador", "founder", "dueño", "dueno"]),
-    ("Director, Gerente, Jefe, Líder y/o similares",
+    ("Director, Gerente, Jefe, Lider y/o similares",
      ["director", "gerente", "jefe", "lider", "líder", "manager", "head of"]),
     ("Coordinador y/o supervisor",
      ["coordinador", "supervisor", "coordinator"]),
-    ("Auxiliar, Asistente, Operador ejecutivo Jr. y/o similares",
+    ('Auxiliar, Asistente, Operador ejecutivo Jr. y/o similares"',
      ["auxiliar", "asistente", "assistant", "jr", "junior", "becario", "practicante", "trainee", "operador"]),
 ]
 

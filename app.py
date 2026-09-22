@@ -93,7 +93,7 @@ def _completar_linkedin(nombre, razon_social):
 
 
 @st.dialog("Confirmar exportación a Monday")
-def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_nombre):
+def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_id):
     st.write(f"¿Seguro que querés exportar a **{etiqueta}** ({cuenta}) a Monday?")
     col_si, col_no = st.columns(2)
     with col_si:
@@ -123,7 +123,7 @@ def dialog_exportar_monday(idx, etiqueta, cuenta, responsable_nombre):
                             st.session_state["df_contactos"]["Cuenta item id"].astype(object)
                         )
                         st.session_state["df_contactos"].loc[mismo_nombre, "Cuenta item id"] = cuenta_item_id
-                    monday_crear_contacto(fila, cuenta_item_id, responsable_nombre=responsable_nombre)
+                    monday_crear_contacto(fila, cuenta_item_id, responsable_id=responsable_id)
                     st.session_state["_monday_aviso"] = ("success", f"{etiqueta} exportado correctamente.")
                 st.session_state["df_contactos"].loc[idx, "Exportado a Monday"] = True
             except Exception as exc:
@@ -187,8 +187,9 @@ def _renderizar_tarjeta_contacto(idx, fila, usuarios_monday):
             col_resp, col_contactado, col_no_existe, col_exportar = st.columns([2, 1.3, 1.8, 1.8])
             with col_resp:
                 responsable_nombre = st.selectbox(
-                    "Responsable", options=[""] + usuarios_monday, key=f"responsable_{idx}",
+                    "Responsable", options=[""] + list(usuarios_monday.keys()), key=f"responsable_{idx}",
                 )
+                responsable_id = usuarios_monday.get(responsable_nombre)
             with col_contactado:
                 contactado = st.checkbox(
                     "Contactado", value=bool(fila["Contactado"]), key=f"contactado_{idx}"
@@ -207,7 +208,7 @@ def _renderizar_tarjeta_contacto(idx, fila, usuarios_monday):
                     icon=":material/cloud_upload:", use_container_width=True,
                 ):
                     dialog_exportar_monday(
-                        idx, etiqueta, fila["Cuenta asociada"], responsable_nombre
+                        idx, etiqueta, fila["Cuenta asociada"], responsable_id
                     )
 
 

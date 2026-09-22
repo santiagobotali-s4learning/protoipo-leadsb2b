@@ -80,10 +80,12 @@ class EnriquecimientoEmpresa(BaseModel):
     tipo_empresa: Optional[str] = Field(
         default=None,
         description=(
-            "Clasificación de la empresa en UNA de estas categorías exactas: "
-            "'Empresa privada', 'Empresa pública', 'Institucion educativa pública', "
-            "'Institucion educativa privada', 'Secretarías de Gobierno', 'Alcaldías', "
-            "'Municipios', 'DIF', 'Confederaciones', 'Cámaras empresariales', "
+            "Clasificación de la empresa en UNA de estas categorías exactas — deben "
+            "quedar EXACTAS, sin acentos, así calzan con los labels reales del board "
+            "de Cuentas en Monday: "
+            "'Empresa privada', 'Empresa publica', 'Institucion educativa publica', "
+            "'Institucion educativa privada', 'Secretarias de Gobierno', 'Alcaldias', "
+            "'Municipios', 'DIF', 'Confederaciones', 'Camaras empresariales', "
             "'Sindicatos', 'Fundaciones', 'Capitales Mixtos'. Inferí a partir de la "
             "razón social y la actividad económica (DENUE) — no hace falta evidencia "
             "de los resultados de búsqueda para esto. Si no hay ninguna señal de que "

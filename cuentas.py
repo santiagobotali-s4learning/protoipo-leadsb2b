@@ -161,7 +161,7 @@ def monday_listar_cuentas_reales():
     Cuentas real, trayendo todo en bulk con paginación por cursor. Cacheada
     sin TTL, refresco manual (botón "Actualizar cuentas de Monday" en
     app.py llama a monday_listar_cuentas_reales.clear())."""
-    columnas_a_leer = ["Convenios", "Página web", "Cantidad de empleados", "Tamaño"]
+    columnas_a_leer = ["Convenio asociado", "Página web", "Cantidad de empleados", "Tamaño"]
     ids_columnas = [MONDAY_COLUMNAS_CUENTAS[c] for c in columnas_a_leer]
     cuentas = {}
 
@@ -169,20 +169,36 @@ def monday_listar_cuentas_reales():
         for item in items:
             valores = {cv["id"]: cv for cv in item["column_values"]}
             nombre_normalizado = item["name"].strip().lower()
+            # "Tamaño" es una columna fórmula: Monday siempre devuelve "text"
+            # vacío para estas columnas — el valor calculado viene en
+            # "display_value", solo dentro del fragmento tipado FormulaValue
+            # (confirmado empíricamente 2026-09-22, ver la nota en la query).
+            tamano_valor = valores[MONDAY_COLUMNAS_CUENTAS["Tamaño"]]
             cuentas[nombre_normalizado] = {
                 "item_id": item["id"],
-                "tiene_convenio": len(_linked_item_ids(valores[MONDAY_COLUMNAS_CUENTAS["Convenios"]])) > 0,
+                "tiene_convenio": len(_linked_item_ids(valores[MONDAY_COLUMNAS_CUENTAS["Convenio asociado"]])) > 0,
                 "pagina_web": valores[MONDAY_COLUMNAS_CUENTAS["Página web"]]["text"] or None,
                 "cantidad_empleados": valores[MONDAY_COLUMNAS_CUENTAS["Cantidad de empleados"]]["text"] or None,
-                "tamano": valores[MONDAY_COLUMNAS_CUENTAS["Tamaño"]]["text"] or None,
+                "tamano": tamano_valor.get("display_value") or None,
             }
 
+    # "Tamaño" (formula_mm7dj04x) es una columna fórmula — su valor calculado
+    # solo viene en "display_value" dentro de "... on FormulaValue", "text"
+    # siempre viene vacío para este tipo de columna (confirmado empíricamente
+    # contra la API 2026-09-22).
     query_inicial = """
     query ($boardId: ID!, $columnaIds: [String!]) {
       boards(ids: [$boardId]) {
         items_page(limit: 100) {
           cursor
-          items { id name column_values(ids: $columnaIds) { id text value ... on BoardRelationValue { linked_item_ids } } }
+          items {
+            id name
+            column_values(ids: $columnaIds) {
+              id text value
+              ... on BoardRelationValue { linked_item_ids }
+              ... on FormulaValue { display_value }
+            }
+          }
         }
       }
     }
@@ -196,7 +212,14 @@ def monday_listar_cuentas_reales():
     query ($cursor: String!, $columnaIds: [String!]) {
       next_items_page(cursor: $cursor, limit: 100) {
         cursor
-        items { id name column_values(ids: $columnaIds) { id text value ... on BoardRelationValue { linked_item_ids } } }
+        items {
+          id name
+          column_values(ids: $columnaIds) {
+            id text value
+            ... on BoardRelationValue { linked_item_ids }
+            ... on FormulaValue { display_value }
+          }
+        }
       }
     }
     """
@@ -218,43 +241,46 @@ def monday_crear_cuenta(fila):
     de df_contactos (esquema de fila_contacto en utils.py — usa las claves
     '... empresa' agregadas ahí). Se llama solo al confirmar el export de
     un pre-lead de cuenta nueva (nunca automático). Devuelve el item_id
-    real creado."""
-    # Todas las columnas de MONDAY_COLUMNAS_CUENTAS son type "text" simple
-    # (confirmado empíricamente en el Task 1 — ver la nota al inicio de
-    # structuraCuentas.md): a
-    # diferencia de columnas típicas de Monday con tipos dedicados
-    # (status/email/phone/link/date), acá se escribe siempre un string
-    # plano, nunca el dict tipado que usa la API para esas otras columnas.
+    real creado.
+
+    Desde el cambio de esquema del board (re-confirmado empíricamente
+    2026-09-22, verificado contra la doc oficial de Monday), la mayoría de
+    las columnas de MONDAY_COLUMNAS_CUENTAS son tipos reales
+    (email/phone/link/status), cada una con su propio shape de JSON — ya
+    no alcanza con mandar un string plano salvo en las que siguen siendo
+    'text' simple (Cantidad de empleados, Descripcion, País, RFC/NIT/RUC).
+    "Categoria" y "Tamaño" son columnas fórmula calculadas por Monday: NO
+    se escriben más (antes se calculaba "Tamaño" a mano con TAMANOS_MONDAY
+    y se escribía como texto). "Grupo Empresarial" es ahora un
+    board_relation real sin automatizar (decisión explícita, no hay item
+    de grupo que linkear) — solo se sigue escribiendo el flag "Pertenece a
+    algun grupo empresarial" (status Sí/No)."""
     columnas = MONDAY_COLUMNAS_CUENTAS
     valores = {}
     if _valor_valido(fila.get("Sector empresa")):
-        valores[columnas["Sector"]] = str(fila["Sector empresa"])
+        valores[columnas["Sector"]] = {"label": str(fila["Sector empresa"])}
     if _valor_valido(fila.get("Personal estimado empresa")):
         valores[columnas["Cantidad de empleados"]] = str(fila["Personal estimado empresa"])
-    if _valor_valido(fila.get("Tamaño empresa")):
-        valores[columnas["Tamaño"]] = str(fila["Tamaño empresa"])
     if _valor_valido(fila.get("Correo empresa")):
-        valores[columnas["E-Mail"]] = str(fila["Correo empresa"])
+        correo_empresa = str(fila["Correo empresa"])
+        valores[columnas["E-Mail"]] = {"email": correo_empresa, "text": correo_empresa}
     telefono = _telefono_mx(fila.get("Teléfono (empresa)"))
     if telefono:
-        valores[columnas["Teléfono"]] = telefono
+        valores[columnas["Teléfono"]] = {"phone": telefono, "countryShortName": "MX"}
     if _valor_valido(fila.get("Sitio web empresa")):
-        valores[columnas["Página web"]] = str(fila["Sitio web empresa"])
+        valores[columnas["Página web"]] = {"url": str(fila["Sitio web empresa"]), "text": ""}
     valores[columnas["País"]] = "México"
-    valores[columnas["Fecha de inicio"]] = date.today().isoformat()
+    valores[columnas["Fecha de inicio"]] = {"date": date.today().isoformat()}
     # Grupo empresarial (probable): "Sí — ..." o "No", calculado en la Etapa 3
-    # (marcar_grupo_corporativo). Se parte en Sí/No para la columna dedicada
-    # y se guarda el detalle (con qué otra empresa comparte dominio) en
-    # "Grupo Empresarial" — no hay un nombre de grupo real, es lo más
-    # cercano que el pipeline puede armar sin ese dato.
+    # (marcar_grupo_corporativo). Solo se escribe el flag Sí/No — "Grupo
+    # Empresarial" es un board_relation real sin item que linkear, se deja
+    # sin tocar (ver docstring).
     grupo = fila.get("Grupo empresarial")
     if _valor_valido(grupo):
-        valores[columnas["Pertenece a algun grupo empresarial"]] = (
-            "Si" if str(grupo).strip().lower().startswith("sí") else "No"
-        )
-        valores[columnas["Grupo Empresarial"]] = str(grupo)
+        es_grupo = "Si" if str(grupo).strip().lower().startswith("sí") else "No"
+        valores[columnas["Pertenece a algun grupo empresarial"]] = {"label": es_grupo}
     if _valor_valido(fila.get("Tipo empresa")):
-        valores[columnas["Tipo"]] = str(fila["Tipo empresa"])
+        valores[columnas["Tipo"]] = {"label": str(fila["Tipo empresa"])}
     if _valor_valido(fila.get("Descripcion empresa")):
         valores[columnas["Descripcion"]] = str(fila["Descripcion empresa"])
     # RFC: se busca por enriquecimiento (Serper + Claude) sin verificación

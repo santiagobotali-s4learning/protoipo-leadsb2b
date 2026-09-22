@@ -49,53 +49,52 @@ def monday_correo_existe(correo):
 
 @st.cache_data(ttl="1h", show_spinner=False)
 def monday_listar_usuarios():
-    """Nombres de los usuarios reales del workspace de Monday. Se usa para
-    armar el selector de 'Responsable' con usuarios reales en vez de dejar
-    escribir cualquier nombre a mano (evita responsables inventados o mal
-    escritos); el nombre elegido se guarda tal cual como texto plano en
-    Monday (ver monday_crear_contacto más abajo), ya que 'Responsable' es
-    una columna 'text' simple en este board, no un people-picker nativo."""
+    """{nombre: id} de los usuarios reales del workspace de Monday, orden
+    alfabético por nombre. Se usa para armar el selector de 'Responsable'
+    con usuarios reales en vez de dejar escribir cualquier nombre a mano
+    (evita responsables inventados o mal escritos); el id elegido se manda
+    tal cual a Monday (ver monday_crear_contacto más abajo), ya que
+    'Responsable' es una columna people real en este board (re-confirmado
+    empíricamente 2026-09-22 — antes era 'text' simple y se guardaba el
+    nombre como string plano)."""
     try:
-        data = monday_graphql("{ users { name } }")
-        return sorted(u["name"] for u in data["users"])
+        data = monday_graphql("{ users { id name } }")
+        return dict(sorted(((u["name"], u["id"]) for u in data["users"]), key=lambda par: par[0]))
     except Exception:
-        return []
+        return {}
 
 
-def monday_crear_contacto(fila, cuenta_item_id, responsable_nombre=None):
+def monday_crear_contacto(fila, cuenta_item_id, responsable_id=None):
     """Crea un item en el board de Contacto a partir de una fila con el
     esquema de COLUMNAS_CONTACTO_MONDAY. 'cuenta_item_id' es el item_id
     real de la cuenta en el board de Cuentas (ver cuentas.py) — se linkea
     con un board_relation real, no con texto. 'Estado' queda en
     'Contactado' — se llama a esta función solo al exportar un contacto ya
-    contactado. 'responsable_nombre' es el nombre de un usuario real de
-    Monday (la app lo restringe a las opciones de monday_listar_usuarios
-    vía el selectbox, así se evita un responsable inventado o mal
-    escrito) — se omite si no se pasa.
+    contactado. 'responsable_id' es el id numérico (string) de un usuario
+    real de Monday (la app lo restringe a las opciones de
+    monday_listar_usuarios vía el selectbox, así se evita un responsable
+    inventado o mal escrito) — se omite si no se pasa.
 
-    Todas las columnas de MONDAY_COLUMNAS_CONTACTO son type "text" simple
-    (confirmado empíricamente en el Task 1 — ver la nota al inicio de
-    structuraContacto.md), excepto
-    "Cuenta asociada" que es la única columna board_relation real del
-    board: a diferencia de columnas típicas de Monday con tipos dedicados
-    (status/email/phone/link/date/people), acá se escribe siempre un
-    string plano, nunca el dict tipado que usa la API para esas otras
-    columnas. "Responsable" en particular es también type "text" en este
-    board de prueba (no un people-picker real): como no hay people-picker
-    que resuelva un ID a nombre, se escribe directamente el nombre del
-    usuario como texto plano (antes se escribía el ID numérico, que
-    quedaba ilegible en Monday)."""
+    Desde el cambio de esquema del board (re-confirmado empíricamente
+    2026-09-22, con un create_item + lectura de prueba contra la API,
+    verificado contra la doc oficial de Monday), la mayoría de las
+    columnas de MONDAY_COLUMNAS_CONTACTO son tipos reales (email/phone/
+    link/date/status/people), cada una con su propio shape de JSON — ya no
+    alcanza con mandar un string plano salvo en las que siguen siendo
+    'text' simple (Extensión, País, Nombre de cargo). 'Cuenta asociada' y
+    'Responsable' llevan ids (de cuenta e item_ids, y de persona
+    respectivamente), no texto."""
     columnas = dict(MONDAY_COLUMNAS_CONTACTO)
     valores = {columnas["Cuenta asociada"]: {"item_ids": [int(cuenta_item_id)]}}
 
     correo = fila.get("Correo")
     correo_valido = _valor_valido(correo)
     if correo_valido:
-        valores[columnas["Correo"]] = correo
+        valores[columnas["Correo"]] = {"email": correo, "text": correo}
 
     telefono = _telefono_mx(fila.get("Teléfono (empresa)"))
     if telefono:
-        valores[columnas["Teléfono (empresa)"]] = telefono
+        valores[columnas["Teléfono (empresa)"]] = {"phone": telefono, "countryShortName": "MX"}
 
     if _valor_valido(fila.get("País")):
         valores[columnas["País"]] = str(fila["País"])
@@ -112,14 +111,14 @@ def monday_crear_contacto(fila, cuenta_item_id, responsable_nombre=None):
         )
 
     if _valor_valido(fila.get("Nivel de cargo")):
-        valores[columnas["Nivel de cargo"]] = str(fila["Nivel de cargo"])
+        valores[columnas["Nivel de cargo"]] = {"label": str(fila["Nivel de cargo"])}
     if _valor_valido(fila.get("Link de LinkedIn")):
-        valores[columnas["Link de LinkedIn"]] = str(fila["Link de LinkedIn"])
+        valores[columnas["Link de LinkedIn"]] = {"url": str(fila["Link de LinkedIn"]), "text": ""}
     if _valor_valido(fila.get("Fecha de inicio")):
-        valores[columnas["Fecha de inicio"]] = str(fila["Fecha de inicio"])
-    if _valor_valido(responsable_nombre):
-        valores[columnas["Responsable"]] = str(responsable_nombre)
-    valores[columnas["Estado"]] = "Contactado"
+        valores[columnas["Fecha de inicio"]] = {"date": str(fila["Fecha de inicio"])}
+    if _valor_valido(responsable_id):
+        valores[columnas["Responsable"]] = {"personsAndTeams": [{"id": int(responsable_id), "kind": "person"}]}
+    valores[columnas["Estado"]] = {"label": "Contactado"}
 
     mutation = """
     mutation ($boardId: ID!, $itemName: String!, $columnValues: JSON!) {
