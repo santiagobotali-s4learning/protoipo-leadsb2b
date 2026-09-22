@@ -64,7 +64,7 @@ from utils import (
 )
 
 st.set_page_config(
-    page_title="Explorador DENUE",
+    page_title="Explorador INEGI",
     page_icon="design/logo_s4.svg",
     layout="wide",
 )
@@ -212,7 +212,7 @@ def _renderizar_tarjeta_contacto(idx, fila, usuarios_monday):
                     )
 
 
-st.title("Explorador DENUE")
+st.title("Explorador INEGI")
 st.caption("Consulta y filtra el Directorio Estadístico Nacional de Unidades Económicas (INEGI).")
 
 if not API_KEY:
