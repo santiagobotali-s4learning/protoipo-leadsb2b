@@ -387,7 +387,9 @@ with tab_limpios:
             key="tabla_etapa2",
         )
         filas_seleccionadas = evento_etapa2.selection.rows
-        if filas_seleccionadas:
+        # La selección de la tabla persiste entre reruns: al subir el mínimo de
+        # empleados df_etapa3 se achica y el índice guardado puede quedar fuera de rango.
+        if filas_seleccionadas and filas_seleccionadas[0] < len(df_etapa3):
             empresa_seleccionada = df_etapa3.iloc[filas_seleccionadas[0]]
             razon_social_normalizada = str(empresa_seleccionada["Razon_social"]).strip()
             sucursales = df_etapa1[
