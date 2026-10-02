@@ -171,6 +171,7 @@ COLUMNAS_LIMPIAS = {
     "Nombre": "Nombre (sucursal representativa)",
     "Sucursales": "Sucursales en DENUE",
     "Personal_estimado": "Personal estimado",
+    "Personal_monday": "Empleados (Monday)",
     "Banda_total": "Banda de tamaño",
     "Correo_e": "Correo",
     "Telefono": "Teléfono",
@@ -270,10 +271,9 @@ LOCAL_PARTS_CORREO_GENERAL = {
 # clave que matchea gana (evita que "director" pise a "ceo" o viceversa).
 # "Nivel de cargo" es una columna status real (re-confirmado 2026-09-22) —
 # estos textos deben matchear EXACTO los labels que están hoy cargados en
-# Monday, sin acentos. El 4to label tiene una comilla suelta pegada al
-# final (typo de carga de datos del lado de Monday, confirmado empíricamente
-# contra la API) — se deja así a pedido explícito del usuario, en vez de
-# corregir el label en Monday.
+# Monday, sin acentos (lista final en 'Listas B2B.xlsx'). El 4to label tenía
+# una comilla suelta pegada al final (typo antiguo de Monday); la lista final
+# ya no la tiene, así que acá tampoco.
 NIVELES_CARGO = [
     ("CEO, Presidente y/o similares",
      ["ceo", "cfo", "coo", "cto", "chief", "president", "presidente", "fundador", "founder", "dueño", "dueno"]),
@@ -281,7 +281,7 @@ NIVELES_CARGO = [
      ["director", "gerente", "jefe", "lider", "líder", "manager", "head of"]),
     ("Coordinador y/o supervisor",
      ["coordinador", "supervisor", "coordinator"]),
-    ('Auxiliar, Asistente, Operador ejecutivo Jr. y/o similares"',
+    ("Auxiliar, Asistente, Operador ejecutivo Jr. y/o similares",
      ["auxiliar", "asistente", "assistant", "jr", "junior", "becario", "practicante", "trainee", "operador"]),
 ]
 

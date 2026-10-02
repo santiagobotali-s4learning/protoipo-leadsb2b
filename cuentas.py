@@ -260,7 +260,7 @@ def monday_crear_cuenta(fila):
     if _valor_valido(fila.get("Sector empresa")):
         valores[columnas["Sector"]] = {"label": str(fila["Sector empresa"])}
     if _valor_valido(fila.get("Personal estimado empresa")):
-        valores[columnas["Cantidad de empleados"]] = str(fila["Personal estimado empresa"])
+        valores[columnas["Cantidad de empleados"]] = str(int(float(fila["Personal estimado empresa"])))
     if _valor_valido(fila.get("Correo empresa")):
         correo_empresa = str(fila["Correo empresa"])
         valores[columnas["E-Mail"]] = {"email": correo_empresa, "text": correo_empresa}

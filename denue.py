@@ -138,6 +138,9 @@ def agrupar_por_empresa(df):
         personal_min = int(sub["_estrato_min"].sum())
         sin_techo = sub["_estrato_max"].isna().any()
         personal_max = None if sin_techo else int(sub["_estrato_max"].sum())
+        # Para Monday: máximo por sucursal; en la banda abierta ("251 y más")
+        # el techo no existe y se usa su mínimo (251).
+        personal_monday = int(sub["_estrato_max"].fillna(sub["_estrato_min"]).sum())
         razon_social = sub.iloc[0]["Razon_social"]
         razon_social = razon_social if str(razon_social).strip() else primero_no_vacio(sub["Nombre"])
         clase_actividad = primero_no_vacio(sub["Clase_actividad"])
@@ -150,6 +153,7 @@ def agrupar_por_empresa(df):
                 "Personal_min": personal_min,
                 "Personal_max": personal_max,
                 "Personal_estimado": f"{personal_min}+" if sin_techo else f"{personal_min}–{personal_max}",
+                "Personal_monday": personal_monday,
                 "Personal_punto_medio": None if sin_techo else round((personal_min + personal_max) / 2),
                 "Banda_total": banda_total(personal_min),
                 "Tamano_monday": tamano_monday(personal_min),
@@ -167,6 +171,7 @@ def agrupar_por_empresa(df):
         "Razon_social", "Nombre", "Sucursales", "Personal_estimado", "Personal_punto_medio", "Banda_total",
         "Tamano_monday", "Correo_e", "Telefono", "Sitio_internet", "Clase_actividad", "CLASE_ACTIVIDAD_ID",
         "Sector_monday", "Ubicacion", "Fecha_Alta", "Personal_min", "Personal_max",
+        "Personal_monday",
     ]
     return pd.DataFrame(filas, columns=columnas)
 
