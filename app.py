@@ -227,7 +227,7 @@ with st.sidebar:
         sector = st.selectbox(
             "Sector económico (SCIAN)",
             options=sector_options,
-            format_func=lambda code: f"{code} — {sector_labels[code]}" if code != SECTOR_TODOS else sector_labels[code],
+            format_func=lambda code: sector_labels[code],
         )
 
         entidad_options = [ENTIDAD_TODOS] + list(ENTIDADES_FEDERATIVAS.keys())
