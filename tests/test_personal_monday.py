@@ -16,7 +16,7 @@ def _sucursales(estratos, razon="Empresa SA"):
 def test_personal_monday_usa_el_maximo_del_rango():
     fila = agrupar_por_empresa(_sucursales(["31 a 50 personas"])).iloc[0]
     assert fila["Personal_monday"] == 50
-    assert fila["Personal_estimado"] == "31–50"  # la vista conserva el rango
+    assert "Personal_estimado" not in fila.index
 
 
 def test_personal_monday_suma_maximos_de_sucursales():
@@ -27,7 +27,6 @@ def test_personal_monday_suma_maximos_de_sucursales():
 def test_personal_monday_banda_abierta_usa_251():
     fila = agrupar_por_empresa(_sucursales(["251 y más personas"])).iloc[0]
     assert fila["Personal_monday"] == 251
-    assert fila["Personal_estimado"] == "251+"
 
 
 def test_personal_monday_banda_abierta_mas_otras_sucursales():

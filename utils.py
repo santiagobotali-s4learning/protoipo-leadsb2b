@@ -84,7 +84,7 @@ def fila_contacto(
     razon_social, nombre, correo, telefono_empresa, cargo, linkedin, es_principal,
     estado_correo=None, score_correo=None, confianza_correo=None, fuente=None, sources=None,
     cuenta_item_id=None, sector_empresa=None, personal_estimado_empresa=None,
-    tamano_empresa=None, sitio_web_empresa=None, correo_empresa=None,
+    sitio_web_empresa=None, correo_empresa=None,
     grupo_empresarial=None, tipo_empresa=None, descripcion_empresa=None, rfc_empresa=None,
 ):
     """Arma una fila de contacto con el esquema del board de Monday (ver
@@ -115,7 +115,6 @@ def fila_contacto(
         "Cuenta item id": cuenta_item_id,
         "Sector empresa": sector_empresa,
         "Personal estimado empresa": personal_estimado_empresa,
-        "Tamaño empresa": tamano_empresa,
         "Sitio web empresa": sitio_web_empresa,
         "Correo empresa": correo_empresa,
         "Grupo empresarial": grupo_empresarial,

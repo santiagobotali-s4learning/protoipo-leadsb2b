@@ -11,12 +11,10 @@ import streamlit as st
 
 from catalogos import ESTRATOS
 from config import (
-    BANDAS_TOTALES,
     BASE_URL,
     COLUMNAS_PRIORITARIAS,
     SECTOR_MONDAY_PALABRAS_CLAVE,
-    SECTOR_MONDAY_POR_SCIAN,
-    TAMANOS_MONDAY,
+    SECTOR_MONDAY_REGLAS,
 )
 from utils import dominio_de_empresa
 
@@ -66,37 +64,23 @@ def rango_estrato(etiqueta):
     return (0, 0)
 
 
-def banda_total(personal_min):
-    for umbral, etiqueta in BANDAS_TOTALES:
-        if personal_min >= umbral:
-            return etiqueta
-    return BANDAS_TOTALES[-1][1]
-
-
-def tamano_monday(personal_min):
-    """Micro/Pequeña/Mediana/Grande para la columna 'Tamano' del board de
-    Cuentas — cortes simples y únicos (no por sector), definidos por el
-    usuario, distintos de BANDAS_TOTALES (que sirve para filtrar/mostrar en
-    la UI, no para exportar a Monday)."""
-    for techo, etiqueta in TAMANOS_MONDAY:
-        if personal_min <= techo:
-            return etiqueta
-    return "Grande"
-
-
 def sector_monday(clase_actividad, clase_actividad_id):
-    """Uno de los 25 sectores del dropdown 'Sector' del board de Cuentas, a
-    partir de la Clase_actividad (texto SCIAN) y su código. Primero prueba
-    palabras clave (para sub-sectores que el SCIAN de 2 dígitos no separa,
-    ej. Automotriz dentro de Manufactureras); si ninguna matchea, cae al
-    sector SCIAN de 2 dígitos. 'Servicios' es el default si no hay
-    código o no está en la tabla — no hay 'sector desconocido' en el dropdown."""
+    """Label del dropdown 'Sector' del board de Cuentas, a partir del código
+    de clase SCIAN (CLASE_ACTIVIDAD_ID, 6 dígitos) según SECTOR_MONDAY_REGLAS.
+    Devuelve "" cuando la tabla de equivalencias no da un sector automático
+    (22, 55, 56, 81 sin clase resoluble, 51/72 sin clase conocida): Monday
+    deja la columna vacía en vez de forzar una categoría genérica."""
+    codigo = str(clase_actividad_id or "")
+    prefijo = codigo[:2]
+    por_defecto, reglas = SECTOR_MONDAY_REGLAS.get(prefijo, ("", []))
+    for prefijos, etiqueta in reglas:
+        if codigo.startswith(prefijos):
+            return etiqueta
     texto = str(clase_actividad or "").lower()
-    for claves, etiqueta in SECTOR_MONDAY_PALABRAS_CLAVE:
+    for claves, etiqueta in SECTOR_MONDAY_PALABRAS_CLAVE.get(prefijo, []):
         if any(clave in texto for clave in claves):
             return etiqueta
-    prefijo = str(clase_actividad_id or "")[:2]
-    return SECTOR_MONDAY_POR_SCIAN.get(prefijo, "Servicios")
+    return por_defecto
 
 
 def primero_no_vacio(serie):
@@ -152,11 +136,7 @@ def agrupar_por_empresa(df):
                 "Sucursales": len(sub),
                 "Personal_min": personal_min,
                 "Personal_max": personal_max,
-                "Personal_estimado": f"{personal_min}+" if sin_techo else f"{personal_min}–{personal_max}",
                 "Personal_monday": personal_monday,
-                "Personal_punto_medio": None if sin_techo else round((personal_min + personal_max) / 2),
-                "Banda_total": banda_total(personal_min),
-                "Tamano_monday": tamano_monday(personal_min),
                 "Correo_e": primero_no_vacio(sub["Correo_e"]),
                 "Telefono": primero_no_vacio(sub["Telefono"]),
                 "Sitio_internet": primero_no_vacio(sub["Sitio_internet"]),
@@ -168,8 +148,7 @@ def agrupar_por_empresa(df):
             }
         )
     columnas = [
-        "Razon_social", "Nombre", "Sucursales", "Personal_estimado", "Personal_punto_medio", "Banda_total",
-        "Tamano_monday", "Correo_e", "Telefono", "Sitio_internet", "Clase_actividad", "CLASE_ACTIVIDAD_ID",
+        "Razon_social", "Nombre", "Sucursales", "Correo_e", "Telefono", "Sitio_internet", "Clase_actividad", "CLASE_ACTIVIDAD_ID",
         "Sector_monday", "Ubicacion", "Fecha_Alta", "Personal_min", "Personal_max",
         "Personal_monday",
     ]

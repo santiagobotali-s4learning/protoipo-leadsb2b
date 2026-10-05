@@ -170,91 +170,69 @@ COLUMNAS_LIMPIAS = {
     "Razon_social": "Razón social",
     "Nombre": "Nombre (sucursal representativa)",
     "Sucursales": "Sucursales en DENUE",
-    "Personal_estimado": "Personal estimado",
-    "Personal_monday": "Empleados (Monday)",
-    "Banda_total": "Banda de tamaño",
+    "Personal_monday": "Estrato (Personal Ocupado)",
     "Correo_e": "Correo",
     "Telefono": "Teléfono",
     "Sitio_internet": "Sitio web",
     "Clase_actividad": "Actividad económica",
     "CLASE_ACTIVIDAD_ID": "Código SCIAN",
     "Sector_monday": "Sector (Monday)",
-    "Tamano_monday": "Tamaño (Monday)",
     "Ubicacion": "Localidad, municipio, estado",
     "Fecha_Alta": "Fecha de alta en DENUE",
     "Grupo_corporativo_probable": "Grupo corporativo probable",
 }
 
-BANDAS_TOTALES = [
-    (1000, "1000 y más"),
-    (250, "250 a 999"),
-    (50, "50 a 249"),
-    (0, "Hasta 49"),
-]
-
-# Tamaño para la columna 'Tamano' del board de Cuentas (Micro/Pequeña/
-# Mediana/Grande) — cortes fijos (no por sector, a diferencia de los
-# oficiales SE/INEGI) definidos por el usuario. (umbral, etiqueta): personal
-# <= umbral cae en esa etiqueta; por encima del último, "Grande".
-TAMANOS_MONDAY = [
-    (10, "Micro"),
-    (50, "Pequeña"),
-    (250, "Mediana"),
-]
-
-# Sector SCIAN de 2 dígitos (ver catalogos.SECTORES_SCIAN) -> uno de los 25
-# sectores del dropdown 'Sector' del board de Cuentas. Mapeo aproximado —
-# varios sectores SCIAN combinan actividades que el dropdown separa (ver
-# SECTOR_MONDAY_PALABRAS_CLAVE para los casos que sí se distinguen).
-# "Servicios" es el catch-all para sectores SCIAN sin una categoría más
-# específica en el dropdown (electricidad/agua/gas, corporativos, apoyo a
-# negocios, otros servicios). "Sector" es una columna status real en
-# Monday, y sus labels reales vienen SIN acentos (confirmado empíricamente
-# 2026-09-22) — estos valores deben matchear exacto o Monday crea un label
-# nuevo duplicado en vez de usar el existente.
-SECTOR_MONDAY_POR_SCIAN = {
-    "11": "Agricultura",
-    "21": "Mineria",
-    "22": "Servicios",
-    "23": "Construccion",
-    "31": "Manufactura/ Transformacion de productos",
-    "32": "Manufactura/ Transformacion de productos",
-    "33": "Manufactura/ Transformacion de productos",
-    "43": "Comercio",
-    "46": "Comercio",
-    "48": "Transporte",
-    "49": "Transporte",
-    "51": "Tecnologia",
-    "52": "Financiero",
-    "53": "Inmobiliaria",
-    "54": "Profesional",
-    "55": "Servicios",
-    "56": "Servicios",
-    "61": "Educativo",
-    "62": "Salud",
-    "71": "Entretenimiento",
-    "72": "Turismo",
-    "81": "Servicios",
-    "93": "Gobierno",
+# Columna de personal a nivel empresa en las tablas de la Etapa 2 (misma
+# etiqueta que en datos limpios; es el valor que se carga a Monday).
+COLUMNA_ESTRATO_EMPRESA = {
+    "Personal_monday": st.column_config.NumberColumn("Estrato (Personal Ocupado)", format="%d"),
 }
 
-# Se prueban ANTES del mapeo por SCIAN, sobre el texto de Clase_actividad en
-# minúsculas — capturan sub-sectores que el dropdown de Monday separa pero
-# el SCIAN de 2 dígitos no distingue (ej. "Automotriz" es una porción de
-# "31-33 Industrias manufactureras"). La primera clave que matchea gana.
-SECTOR_MONDAY_PALABRAS_CLAVE = [
-    (("automotriz", "automotor", "autopartes", "automóvil", "automovil", "vehículos automotores", "vehiculos automotores"), "Automotriz"),
-    (("aliment", "bebida", "lácte", "lacte", "cárnic", "carnic", "panificación", "panificacion"), "Alimentario"),
-    (("telecomunicaciones", "telefonía", "telefonia", "acceso a internet", "mensajería", "mensajeria"), "Correos / Telecomunicaciones"),
-    (("software", "informática", "informatica", "procesamiento electrónico de información", "procesamiento electronico de informacion"), "Tecnologia"),
-    (("laboratorio", "farmacéutic", "farmaceutic"), "Laboratorios"),
-    (("pesca", "acuicultura", "acuícola", "acuicola"), "Pesca"),
-    (("silvicultura", "forestal"), "Silvicultura"),
-    (("fundación", "fundacion", "asociación civil", "asociacion civil"), "Fundacion"),
-    (("museo", "teatro", "biblioteca"), "Cultural"),
-    (("incubadora", "aceleradora"), "Emprendimiento"),
-    (("hotel", "agencia de viajes", "turístic", "turistic"), "Turismo"),
-]
+# Sector SCIAN de 2 dígitos -> label de la columna 'Sector' del board de
+# Cuentas (25 labels, lista final en 'Listas B2B.xlsx'; "Sector" es una
+# columna status real y sus labels van SIN acentos: deben matchear exacto o
+# Monday crea un label duplicado).
+# Reglas por sector, según la tabla de equivalencias Sector SCIAN -> Salida
+# Utel: (label por defecto, [(prefijos del código de clase SCIAN, label), ...]).
+# La primera regla cuyo prefijo matchee el CLASE_ACTIVIDAD_ID gana. Cada sector
+# solo puede dar las salidas que su fila permite (ej. 43/46 nunca dan
+# 'Alimentario'). Label vacío "" = sin equivalencia automática: la columna
+# Sector queda vacía en Monday y el registro se ve sin sector en la app.
+SECTOR_MONDAY_REGLAS = {
+    "11": ("Agricultura", [(("1125", "1141"), "Pesca"), (("113", "1153"), "Silvicultura")]),
+    "21": ("Mineria", []),
+    "22": ("", []),
+    "23": ("Construccion", []),
+    "31": ("Manufactura/ Transformacion de productos",
+           [(("311", "3121"), "Alimentario"), (("3361", "3362", "3363"), "Automotriz"), (("3254",), "Laboratorios")]),
+    "43": ("Comercio", [(("436",), "Automotriz")]),
+    "46": ("Comercio", [(("4681", "4682", "4683"), "Automotriz")]),
+    "48": ("Transporte", []),
+    "49": ("Transporte", [(("491", "492"), "Correos / Telecomunicaciones")]),
+    "51": ("", [(("517",), "Correos / Telecomunicaciones"), (("5132", "518"), "Tecnologia"),
+                (("512", "516"), "Entretenimiento"), (("511", "513", "5192"), "Cultural")]),
+    "52": ("Financiero", []),
+    "53": ("Inmobiliaria", []),
+    "54": ("Profesional", [(("5415",), "Tecnologia"), (("541380",), "Laboratorios")]),
+    "55": ("", []),
+    "56": ("", []),
+    "61": ("Educativo", []),
+    "62": ("Salud", [(("6215",), "Laboratorios")]),
+    "71": ("Entretenimiento", [(("7111", "7115", "7121"), "Cultural")]),
+    "72": ("", [(("721",), "Turismo"), (("722",), "Alimentario")]),
+    "81": ("", [(("8111",), "Automotriz")]),
+    "93": ("Gobierno", []),
+}
+# 32 y 33 comparten las reglas de 31 (Manufacturas).
+SECTOR_MONDAY_REGLAS["32"] = SECTOR_MONDAY_REGLAS["33"] = SECTOR_MONDAY_REGLAS["31"]
+
+# Respaldo por texto de Clase_actividad (minúsculas) para sectores donde la
+# clase SCIAN sola no alcanza. Solo corre si ninguna regla de prefijo matcheó.
+# {prefijo de sector: [(palabras clave, label), ...]}
+SECTOR_MONDAY_PALABRAS_CLAVE = {
+    "54": [(("incubadora", "aceleradora"), "Emprendimiento")],
+    "81": [(("fundación", "fundacion", "asociación civil", "asociacion civil"), "Fundacion")],
+}
 
 # Local-parts típicos de un buzón institucional/funcional (no una persona) —
 # buscar un contacto por rol para uno de estos correos vuelve vacío siempre,
@@ -297,7 +275,7 @@ COLUMNAS_CONTACTO_MONDAY = [
 COLUMNAS_CONTACTO_INTERNAS = [
     "Es principal", "Estado del correo", "Score del correo", "Confianza del correo",
     "Fuente", "Fuentes del correo", "Cuenta item id", "Sector empresa",
-    "Personal estimado empresa", "Tamaño empresa", "Sitio web empresa", "Correo empresa",
+    "Personal estimado empresa", "Sitio web empresa", "Correo empresa",
     "Grupo empresarial", "Tipo empresa", "Descripcion empresa", "RFC empresa",
 ]
 # Marcado manual en el panel de gestión — no se envía a Monday tal cual, pilotea

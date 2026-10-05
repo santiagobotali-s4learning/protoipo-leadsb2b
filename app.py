@@ -18,6 +18,7 @@ from config import (
     COLUMNAS_CONTACTO_MONDAY,
     COLUMNAS_ENRIQUECIMIENTO,
     COLUMNAS_LIMPIAS,
+    COLUMNA_ESTRATO_EMPRESA,
     ENTIDAD_TODOS,
     ESTRATO_TODOS,
     HUNTER_API_KEY,
@@ -225,7 +226,7 @@ with st.sidebar:
         sector_options = [SECTOR_TODOS] + list(SECTORES_SCIAN.keys())
         sector_labels = {SECTOR_TODOS: "Todos los sectores", **SECTORES_SCIAN}
         sector = st.selectbox(
-            "Sector económico (SCIAN)",
+            "Sector económico",
             options=sector_options,
             format_func=lambda code: sector_labels[code],
         )
@@ -380,7 +381,8 @@ with tab_limpios:
         df_etapa3 = df_etapa2[df_etapa2["Personal_min"] >= minimo_empleados]
         st.caption("Hacé click en una empresa para ver sus sucursales agrupadas.")
         evento_etapa2 = st.dataframe(
-            df_etapa3[["Razon_social", "Sucursales", "Personal_estimado", "Banda_total"]],
+            df_etapa3[["Razon_social", "Sucursales", "Personal_monday"]],
+            column_config=COLUMNA_ESTRATO_EMPRESA,
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
@@ -427,7 +429,8 @@ with tab_limpios:
                         "contacto exitoso en Monday"
                     ):
                         st.dataframe(
-                            df_existe_gestionada[["Razon_social", "Sucursales", "Personal_estimado", "Banda_total"]],
+                            df_existe_gestionada[["Razon_social", "Sucursales", "Personal_monday"]],
+                            column_config=COLUMNA_ESTRATO_EMPRESA,
                             hide_index=True,
                         )
                 if not df_existe_necesita_contacto.empty:
@@ -493,7 +496,7 @@ with tab_enriquecimiento:
         "que ya está cargado en el board de Cuentas."
     )
     st.caption(
-        "**Personal estimado (DENUE)** vs. **Empleados (LinkedIn/web)** miden cosas distintas: "
+        "**Estrato (Personal Ocupado, DENUE)** vs. **Empleados (LinkedIn/web)** miden cosas distintas: "
         "el del DENUE es la presencia física detectada en el sector/estado que buscaste (y "
         "subestima cuando hay sucursales en la banda abierta '251 y más'); el de LinkedIn es lo "
         "que la empresa reporta a nivel global, autoreportado y sin auditar. No uses uno para "
@@ -731,8 +734,7 @@ with tab_enriquecimiento:
                                     confianza_correo=confianza_final, fuente=fuente_contacto,
                                     cuenta_item_id=fila["Cuenta_item_id"],
                                     sector_empresa=fila["Sector (Monday)"],
-                                    personal_estimado_empresa=fila["Empleados (Monday)"],
-                                    tamano_empresa=fila["Tamaño (Monday)"],
+                                    personal_estimado_empresa=fila["Estrato (Personal Ocupado)"],
                                     sitio_web_empresa=fila["Sitio web"],
                                     correo_empresa=fila["Correo"],
                                     grupo_empresarial=fila["Grupo corporativo probable"],
@@ -755,8 +757,7 @@ with tab_enriquecimiento:
                                             sources="; ".join(hallazgo_alt["sources"]) if hallazgo_alt["sources"] else None,
                                             cuenta_item_id=fila["Cuenta_item_id"],
                                             sector_empresa=fila["Sector (Monday)"],
-                                            personal_estimado_empresa=fila["Empleados (Monday)"],
-                                            tamano_empresa=fila["Tamaño (Monday)"],
+                                            personal_estimado_empresa=fila["Estrato (Personal Ocupado)"],
                                             sitio_web_empresa=fila["Sitio web"],
                                             correo_empresa=fila["Correo"],
                                             grupo_empresarial=fila["Grupo corporativo probable"],
@@ -773,8 +774,7 @@ with tab_enriquecimiento:
                                         score_correo=otro["confianza"], fuente="Hunter domain search",
                                         cuenta_item_id=fila["Cuenta_item_id"],
                                         sector_empresa=fila["Sector (Monday)"],
-                                        personal_estimado_empresa=fila["Empleados (Monday)"],
-                                        tamano_empresa=fila["Tamaño (Monday)"],
+                                        personal_estimado_empresa=fila["Estrato (Personal Ocupado)"],
                                         sitio_web_empresa=fila["Sitio web"],
                                         correo_empresa=fila["Correo"],
                                         grupo_empresarial=fila["Grupo corporativo probable"],
@@ -850,8 +850,7 @@ with tab_enriquecimiento:
                                             sources=fuentes_publicas,
                                             cuenta_item_id=fila["Cuenta_item_id"],
                                             sector_empresa=fila["Sector (Monday)"],
-                                            personal_estimado_empresa=fila["Empleados (Monday)"],
-                                            tamano_empresa=fila["Tamaño (Monday)"],
+                                            personal_estimado_empresa=fila["Estrato (Personal Ocupado)"],
                                             sitio_web_empresa=fila["Sitio web"],
                                             correo_empresa=fila["Correo"],
                                             grupo_empresarial=fila["Grupo corporativo probable"],
@@ -872,8 +871,7 @@ with tab_enriquecimiento:
                                             score_correo=otro["confianza"], fuente="Hunter domain search",
                                             cuenta_item_id=fila["Cuenta_item_id"],
                                             sector_empresa=fila["Sector (Monday)"],
-                                            personal_estimado_empresa=fila["Empleados (Monday)"],
-                                            tamano_empresa=fila["Tamaño (Monday)"],
+                                            personal_estimado_empresa=fila["Estrato (Personal Ocupado)"],
                                             sitio_web_empresa=fila["Sitio web"],
                                             correo_empresa=fila["Correo"],
                                             grupo_empresarial=fila["Grupo corporativo probable"],

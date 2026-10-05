@@ -13,7 +13,7 @@ dentro de estos catálogos) lo define el usuario desde la UI en cada corrida.
 SECTORES_SCIAN = {
     "11": "Agricultura / Pesca / Silvicultura",
     "21": "Minería",
-    "22": "Sin equivalencia directa automática",
+    "22": "Energía, agua y gas",
     "23": "Construcción",
     "31-33": "Manufactura / Alimentario / Automotriz / Laboratorios",
     "43": "Comercio / Automotriz (mayor)",
@@ -23,13 +23,13 @@ SECTORES_SCIAN = {
     "52": "Financiero",
     "53": "Inmobiliaria",
     "54": "Tecnología / Laboratorios / sector atendido",
-    "55": "Sector económico principal del grupo",
-    "56": "Sector atendido o revisión",
+    "55": "Corporativos",
+    "56": "Apoyo a negocios",
     "61": "Educativo",
     "62": "Salud",
     "71": "Cultural / Entretenimiento",
     "72": "Turismo / Alimentario",
-    "81": "Interpretación obligatoria",
+    "81": "Otros servicios",
     "93": "Gobierno",
 }
 
