@@ -12,7 +12,9 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from config import LOCAL_PARTS_CORREO_GENERAL, NIVELES_CARGO
+import unicodedata
+
+from config import LOCAL_PARTS_CORREO_GENERAL, NIVELES_CARGO, PAISES_UBICACION, UBICACION_PAIS_NO_DISPONIBLE
 
 
 def extraer_dominio(url):
@@ -121,6 +123,43 @@ def fila_contacto(
         "Tipo empresa": tipo_empresa,
         "Descripcion empresa": descripcion_empresa,
         "RFC empresa": rfc_empresa,
+    }
+
+
+def _sin_acentos(texto):
+    descompuesto = unicodedata.normalize("NFKD", str(texto))
+    return "".join(c for c in descompuesto if not unicodedata.combining(c)).strip().lower()
+
+
+def pais_canonico(pais):
+    """Nombre canónico (clave de PAISES_UBICACION) para un país escrito de
+    cualquier forma — sin acentos, mayúsculas, abreviado o en inglés
+    ('mexico', 'MÉXICO ', 'MX'). None si está vacío o no está en el catálogo."""
+    if not _valor_valido(pais):
+        return None
+    buscado = _sin_acentos(pais)
+    for nombre, datos in PAISES_UBICACION.items():
+        if buscado == _sin_acentos(nombre) or buscado in datos["alias"]:
+            return nombre
+    return None
+
+
+def valor_ubicacion_pais(pais):
+    """JSON de la columna 'location' de Monday para un país, estandarizado
+    desde PAISES_UBICACION. lat/lng son obligatorios para Monday; 'country'
+    y 'countryShort' son los mismos campos que guarda la UI de Monday.
+    País vacío o 'No disponible' -> UBICACION_PAIS_NO_DISPONIBLE. None si
+    es un país con texto que no está en el catálogo (la columna queda vacía
+    para revisarlo a mano, en vez de ocultarlo como 'No disponible')."""
+    if not _valor_valido(pais) or _sin_acentos(pais) == "no disponible":
+        return dict(UBICACION_PAIS_NO_DISPONIBLE)
+    nombre = pais_canonico(pais)
+    if nombre is None:
+        return None
+    datos = PAISES_UBICACION[nombre]
+    return {
+        "lat": datos["lat"], "lng": datos["lng"], "address": nombre,
+        "country": nombre, "countryShort": datos["iso"],
     }
 
 

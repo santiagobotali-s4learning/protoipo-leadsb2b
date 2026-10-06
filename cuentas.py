@@ -19,7 +19,7 @@ from config import (
     MONDAY_COLUMNAS_CUENTAS,
 )
 from monday import monday_graphql
-from utils import _telefono_mx, _valor_valido
+from utils import _telefono_mx, _valor_valido, valor_ubicacion_pais
 
 
 def clasificar_cuentas(df_empresas, cuentas_reales):
@@ -270,6 +270,7 @@ def monday_crear_cuenta(fila):
     if _valor_valido(fila.get("Sitio web empresa")):
         valores[columnas["Página web"]] = {"url": str(fila["Sitio web empresa"]), "text": ""}
     valores[columnas["País"]] = "México"
+    valores[columnas["País (Ubicación)"]] = valor_ubicacion_pais("México")
     valores[columnas["Fecha de inicio"]] = {"date": date.today().isoformat()}
     # Grupo empresarial (probable): "Sí — ..." o "No", calculado en la Etapa 3
     # (marcar_grupo_corporativo). Solo se escribe el flag Sí/No — "Grupo

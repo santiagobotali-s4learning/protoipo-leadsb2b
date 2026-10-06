@@ -9,7 +9,7 @@ import requests
 import streamlit as st
 
 from config import MONDAY_API_KEY, MONDAY_BOARD_CONTACTO, MONDAY_COLUMNAS_CONTACTO, MONDAY_URL
-from utils import _telefono_mx, _valor_valido
+from utils import _telefono_mx, _valor_valido, valor_ubicacion_pais
 
 
 def monday_graphql(query, variables=None):
@@ -98,6 +98,9 @@ def monday_crear_contacto(fila, cuenta_item_id, responsable_id=None):
 
     if _valor_valido(fila.get("País")):
         valores[columnas["País"]] = str(fila["País"])
+    ubicacion = valor_ubicacion_pais(fila.get("País"))
+    if ubicacion:
+        valores[columnas["País (Ubicación)"]] = ubicacion
 
     # Sin nombre de cargo (correo institucional, o nadie identificado): se
     # deja una etiqueta que diga por qué, en vez de un campo vacío o "nan".

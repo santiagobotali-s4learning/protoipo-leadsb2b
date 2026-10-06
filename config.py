@@ -38,6 +38,7 @@ MONDAY_COLUMNAS_CONTACTO = {
     "Teléfono (empresa)": "phone_mm7d71wd",
     "Extensión": "text_mm71vz61",
     "País": "text_mm7173en",
+    "País (Ubicación)": "location_mm7whjxm",
     "Nivel de cargo": "color_mm7dp4ay",
     "Nombre de cargo": "text_mm715hwe",
     "Link de LinkedIn": "link_mm7dw301",
@@ -62,6 +63,62 @@ MONDAY_COLUMNAS_CONTACTO = {
 # de no automatizar (ver proyecto_schema_cuentas_29_campos en memoria);
 # quedan mapeadas por si hace falta leerlas, pero monday_crear_cuenta() no
 # les escribe nada.
+# Board "Grupo Empresarial" (id 18430361308): su columna "País (Ubicación)"
+# es location_mm7wn65y — hoy el pipeline no crea items de grupo (decisión
+# explícita), así que no se escribe desde acá; queda mapeada por si se
+# automatiza.
+MONDAY_COLUMNA_PAIS_UBICACION_GRUPO = "location_mm7wn65y"
+
+# Valor para país vacío o 'No disponible'. Monday exige lat/lng, así que se
+# usa 0,0 (verificado 2026-10-06: lo acepta y muestra el texto 'No
+# disponible'); en una vista de mapa el pin cae en el océano frente a
+# África, por eso conviene filtrar/agrupar por texto, no por mapa.
+UBICACION_PAIS_NO_DISPONIBLE = {"lat": "0", "lng": "0", "address": "No disponible"}
+
+# Catálogo de países para las columnas "País (Ubicación)" de Monday. Una
+# columna location exige lat/lng (sin ellos la API rechaza el valor) y NO
+# deriva el país por su cuenta, así que se manda un punto de referencia
+# fijo por país (centroide aproximado) + el nombre canónico. Así todos los
+# registros de un mismo país quedan idénticos, sin importar cómo lo
+# escribió cada persona. Clave = nombre canónico en español.
+# 'alias' = variantes que ya existen escritas a mano en Monday (se comparan
+# sin acentos ni mayúsculas, así que 'Mexico' y 'Peru' ya matchean solos).
+# Valores que no son un país único ('Latam', 'Mexico y Colombia', 'No
+# disponible' vacío) no están en el catálogo: una columna location es un
+# solo punto; 'No disponible' se resuelve aparte (UBICACION_PAIS_NO_DISPONIBLE).
+PAISES_UBICACION = {
+    "Alemania": {"iso": "DE", "lat": "51.1657", "lng": "10.4515", "alias": []},
+    "Argentina": {"iso": "AR", "lat": "-38.4161", "lng": "-63.6167", "alias": []},
+    "Bélgica": {"iso": "BE", "lat": "50.5039", "lng": "4.4699", "alias": []},
+    "Birmania": {"iso": "MM", "lat": "21.9162", "lng": "95.9560", "alias": []},
+    "Bolivia": {"iso": "BO", "lat": "-16.2902", "lng": "-63.5887", "alias": []},
+    "Brasil": {"iso": "BR", "lat": "-14.2350", "lng": "-51.9253", "alias": []},
+    "Canadá": {"iso": "CA", "lat": "56.1304", "lng": "-106.3468", "alias": []},
+    "Chile": {"iso": "CL", "lat": "-35.6751", "lng": "-71.5430", "alias": []},
+    "China": {"iso": "CN", "lat": "35.8617", "lng": "104.1954", "alias": []},
+    "Colombia": {"iso": "CO", "lat": "4.5709", "lng": "-74.2973", "alias": []},
+    "Ecuador": {"iso": "EC", "lat": "-1.8312", "lng": "-78.1834", "alias": []},
+    "El Salvador": {"iso": "SV", "lat": "13.7942", "lng": "-88.8965", "alias": []},
+    "España": {"iso": "ES", "lat": "40.4637", "lng": "-3.7492", "alias": []},
+    "Estados Unidos": {"iso": "US", "lat": "37.0902", "lng": "-95.7129", "alias": []},
+    "Francia": {"iso": "FR", "lat": "46.2276", "lng": "2.2137", "alias": []},
+    "India": {"iso": "IN", "lat": "20.5937", "lng": "78.9629", "alias": []},
+    "Irlanda": {"iso": "IE", "lat": "53.1424", "lng": "-7.6921", "alias": []},
+    "Japón": {"iso": "JP", "lat": "36.2048", "lng": "138.2529", "alias": []},
+    "Luxemburgo": {"iso": "LU", "lat": "49.8153", "lng": "6.1296", "alias": []},
+    "México": {"iso": "MX", "lat": "23.6345", "lng": "-102.5528", "alias": ["mxico"]},
+    "Nicaragua": {"iso": "NI", "lat": "12.8654", "lng": "-85.2072", "alias": []},
+    "Noruega": {"iso": "NO", "lat": "60.4720", "lng": "8.4689", "alias": []},
+    "Panamá": {"iso": "PA", "lat": "8.5380", "lng": "-80.7821", "alias": []},
+    "Perú": {"iso": "PE", "lat": "-9.1900", "lng": "-75.0152", "alias": []},
+    "Reino Unido": {"iso": "GB", "lat": "55.3781", "lng": "-3.4360", "alias": []},
+    "República Dominicana": {"iso": "DO", "lat": "18.7357", "lng": "-70.1627", "alias": ["rep. dominicana"]},
+    "Suecia": {"iso": "SE", "lat": "60.1282", "lng": "18.6435", "alias": []},
+    "Suiza": {"iso": "CH", "lat": "46.8182", "lng": "8.2275", "alias": []},
+    "Taiwán": {"iso": "TW", "lat": "23.6978", "lng": "120.9605", "alias": []},
+    "Venezuela": {"iso": "VE", "lat": "6.4238", "lng": "-66.5897", "alias": []},
+}
+
 MONDAY_BOARD_CUENTAS = "18430360623"
 MONDAY_COLUMNAS_CUENTAS = {
     "Convenio asociado": "board_relation_mm7dxbap",
@@ -83,6 +140,7 @@ MONDAY_COLUMNAS_CUENTAS = {
     "Teléfono": "phone_mm7dr75t",
     "Página web": "link_mm7d75bp",
     "País": "text_mm71fen5",
+    "País (Ubicación)": "location_mm7wwcd6",
     "Responsable": "multiple_person_mm7d5v02",
     "Fecha de inicio": "date_mm7dbcyt",
     "Oportunidad asociada": "board_relation_mm7d2h1c",
